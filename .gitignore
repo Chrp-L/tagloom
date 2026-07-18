@@ -1,0 +1,16 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+.vite/
+coverage/
+test-results/
+playwright-report/
+*.log
+.env
+.DS_Store
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+!src-tauri/binaries/LICENSE-*.txt
+test-data/manual-acceptance/*
+!test-data/manual-acceptance/README.md

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tagloom",
+  "version": "0.1.0-alpha.1",
+  "identifier": "app.tagloom.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "assetProtocol": { "enable": true, "scope": ["$APPDATA/**", "$LOCALAPPDATA/**", "$HOME/**"] },
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost blob: data:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+    },
+    "windows": [
+      {
+        "title": "Tagloom",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1100,
+        "minHeight": 680,
+        "decorations": false,
+        "shadow": true,
+        "resizable": true,
+        "backgroundColor": "#f1f2ef"
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "windows": { "webviewInstallMode": { "type": "embedBootstrapper" } },
+    "externalBin": [],
+    "resources": ["binaries"],
+    "shortDescription": "Tag and organize your visual library",
+    "longDescription": "Tagloom is a local-first image and video library for personal creators."
+  }
+}
