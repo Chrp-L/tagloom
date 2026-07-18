@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -29,7 +29,7 @@ const assets: Asset[] = ["a", "b", "c", "d"].map((id) => ({
 }));
 const orderedIds = assets.map((asset) => asset.id);
 
-function InteractionHarness({ view, initialMode = "browse", onPreview = vi.fn() }: { view: "grid" | "list"; initialMode?: SelectionMode; onPreview?: (asset: Asset) => void }) {
+function InteractionHarness({ view, initialMode = "browse", onPreview = vi.fn(), onTrash = vi.fn() }: { view: "grid" | "list"; initialMode?: SelectionMode; onPreview?: (asset: Asset) => void; onTrash?: (ids: string[]) => void }) {
   const [interaction, setInteraction] = useState<AssetInteractionState>(() => initialMode === "batch" ? enterBatchSelection(resetAssetContext()) : resetAssetContext());
   return <AssetBrowser
     assets={assets}
@@ -48,6 +48,11 @@ function InteractionHarness({ view, initialMode = "browse", onPreview = vi.fn() 
     onToggleChecked={(assetId) => setInteraction((current) => toggleChecked(current, assetId))}
     onCheckRange={(assetId) => setInteraction((current) => checkRange(current, orderedIds, assetId))}
     onPreview={onPreview}
+    onOpen={vi.fn()}
+    onReveal={vi.fn()}
+    onRename={vi.fn()}
+    onMove={vi.fn()}
+    onTrash={onTrash}
     onAddSource={vi.fn()}
   />;
 }
@@ -171,6 +176,49 @@ describe.each(["grid", "list"] as const)("%s batch mode", (view) => {
   });
 });
 
+describe.each(["grid", "list"] as const)("%s context menu", (view) => {
+  it("opens the app menu, focuses the asset in browse mode, and blocks the native menu", async () => {
+    const onPreview = vi.fn();
+    render(<InteractionHarness view={view} onPreview={onPreview} />);
+    await waitFor(() => expect(document.querySelectorAll("[data-asset-id]")).toHaveLength(4));
+    const item = document.querySelectorAll<HTMLElement>("[data-asset-id]")[1];
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 80, clientY: 80 });
+    item.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(screen.getByRole("menu")).toBeInTheDocument());
+    expect(document.querySelector(".focused")?.getAttribute("data-asset-id")).toBe("b");
+    expect(onPreview).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("menuitem", { name: /预览|Preview|preview/i }));
+    expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ id: "b" }));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.keyDown(item, { key: "F10", shiftKey: true });
+    await waitFor(() => expect(screen.getByRole("menu")).toBeInTheDocument());
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  });
+
+  it("uses all checked assets only when the context target is already checked", async () => {
+    const onTrash = vi.fn();
+    render(<InteractionHarness view={view} initialMode="batch" onTrash={onTrash} />);
+    await waitFor(() => expect(document.querySelectorAll("[data-asset-id]")).toHaveLength(4));
+    physicalClick(document.querySelectorAll("[data-asset-id]")[0]);
+    physicalClick(document.querySelectorAll("[data-asset-id]")[2]);
+    const checkedItem = document.querySelectorAll<HTMLElement>("[data-asset-id]")[0];
+    fireEvent.contextMenu(checkedItem, { button: 2, clientX: 80, clientY: 80 });
+    await waitFor(() => expect(screen.getByRole("menu")).toBeInTheDocument());
+    expect(screen.getAllByRole("menuitem", { name: /仅支持单项|Single item only|singleItemOnly/i })).toHaveLength(2);
+    expect(screen.getAllByRole("menuitem", { name: /仅支持单项|Single item only|singleItemOnly/i }).every((item) => item.hasAttribute("data-disabled"))).toBe(true);
+    fireEvent.click(screen.getByRole("menuitem", { name: /移到回收站|Recycle Bin|trashCount|trash/i }));
+    expect(onTrash).toHaveBeenCalledWith(["a", "c"]);
+
+    fireEvent.contextMenu(document.querySelectorAll<HTMLElement>("[data-asset-id]")[1], { button: 2, clientX: 80, clientY: 80 });
+    await waitFor(() => expect(screen.getByRole("menu")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("menuitem", { name: /移到回收站|Recycle Bin|trash/i }));
+    expect(onTrash).toHaveBeenLastCalledWith(["b"]);
+    expect(document.querySelectorAll(".checked")).toHaveLength(2);
+  });
+});
+
 describe("native asset input", () => {
   it("uses the final click as the only event in a physical pointer sequence", () => {
     const fixture = interactionFixture("browse");
@@ -247,6 +295,11 @@ describe("asset browser stable rendering", () => {
     onToggleChecked: vi.fn(),
     onCheckRange: vi.fn(),
     onPreview: vi.fn(),
+    onOpen: vi.fn(),
+    onReveal: vi.fn(),
+    onRename: vi.fn(),
+    onMove: vi.fn(),
+    onTrash: vi.fn(),
     onAddSource: vi.fn(),
   };
 

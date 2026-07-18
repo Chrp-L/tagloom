@@ -280,7 +280,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .secondaryButton { border: 1px solid var(--line); background: var(--surface-strong); color: var(--text-soft); }.secondaryButton:hover { color: var(--text); border-color: var(--line-strong); }
 .dangerButton { background: var(--danger); color: #fff; }
 .menuContent { z-index: 100; min-width: 170px; padding: 5px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-strong); box-shadow: var(--shadow); }
+.assetContextMenu { min-width: 196px; transform-origin: var(--radix-context-menu-content-transform-origin); }
+.assetContextMenu[data-state="open"] { animation: contextMenuIn 120ms cubic-bezier(.22,1,.36,1) both; }
 .menuItem { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 4px; outline: 0; color: var(--text-soft); font-size: 11px; }
+.menuItem[data-disabled] { opacity: .42; pointer-events: none; }
+.menuHint { margin-left: auto; color: var(--text-faint); font-size: 9px; }
 .menuItem[data-highlighted] { background: var(--surface-soft); color: var(--text); }.menuItem.danger[data-highlighted] { color: var(--danger); }.menuSeparator { height: 1px; margin: 4px; background: var(--line); }.menuIconSpace { width: 15px; }
 
 .dialogOverlay, .previewOverlay { position: fixed; inset: 0; z-index: 200; background: rgba(14, 18, 16, 0.46); animation: fadeIn var(--state); }
@@ -359,6 +363,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 @keyframes previewFadeOut { to { opacity: 0; } }
 @keyframes previewContentIn { from { opacity: 0; transform: scale(.99); } }
 @keyframes previewContentOut { to { opacity: 0; transform: scale(.99); } }
+@keyframes contextMenuIn { from { opacity: 0; transform: scale(.97) translateY(-2px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 .appShell > .sidebar { animation: scenePanelIn 420ms 50ms cubic-bezier(.22,1,.36,1) both; }
 .appShell > .workspace { animation: scenePanelIn 520ms 110ms cubic-bezier(.22,1,.36,1) both; }
 .appShell > .inspector { animation: scenePanelIn 440ms 185ms cubic-bezier(.22,1,.36,1) both; }

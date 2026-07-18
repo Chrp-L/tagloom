@@ -67,6 +67,13 @@ fn tool_candidate(name: &str) -> Option<PathBuf> {
         .or_else(|| executable_dir.map(|dir| dir.join(&exe)).filter(|path| path.exists()))
 }
 
+fn media_tool_command(program: &Path) -> Command {
+    let mut command = Command::new(program);
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    command
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 struct ExifRecord {
@@ -84,7 +91,7 @@ pub async fn captured_dates(paths: &[PathBuf]) -> HashMap<String, String> {
     let Some(exiftool) = tool_candidate("exiftool") else { return HashMap::new(); };
     let mut result = HashMap::new();
     for chunk in paths.chunks(120) {
-        let mut command = Command::new(&exiftool);
+        let mut command = media_tool_command(&exiftool);
         command.args(["-json", "-DateTimeOriginal", "-CreateDate", "-MediaCreateDate", "-api", "QuickTimeUTC=1", "-d", "%Y-%m-%dT%H:%M:%S%z"]);
         for path in chunk { command.arg(path); }
         let Ok(output) = command.output().await else { continue; };
@@ -109,7 +116,7 @@ struct ProbeFormat { duration: Option<String> }
 
 pub async fn probe_video(path: &Path) -> (Option<u32>, Option<u32>, Option<i64>) {
     let Some(ffprobe) = tool_candidate("ffprobe") else { return (None, None, None); };
-    let output = Command::new(ffprobe).args([
+    let output = media_tool_command(&ffprobe).args([
         "-v", "quiet", "-print_format", "json", "-show_streams", "-show_format",
     ]).arg(path).output().await;
     let Ok(output) = output else { return (None, None, None); };
@@ -125,7 +132,7 @@ pub async fn probe_video(path: &Path) -> (Option<u32>, Option<u32>, Option<i64>)
 pub async fn create_video_thumbnail(source: &Path, destination: &Path) -> AppResult<()> {
     let Some(ffmpeg) = tool_candidate("ffmpeg") else { return Err("Bundled ffmpeg is not available yet".into()); };
     if let Some(parent) = destination.parent() { tokio::fs::create_dir_all(parent).await?; }
-    let status = Command::new(ffmpeg)
+    let status = media_tool_command(&ffmpeg)
         .args(["-hide_banner", "-loglevel", "error", "-y", "-ss", "00:00:01"])
         .arg("-i").arg(source)
         .args(["-frames:v", "1", "-vf", "scale=720:720:force_original_aspect_ratio=decrease"])
@@ -138,7 +145,7 @@ pub async fn create_video_thumbnail(source: &Path, destination: &Path) -> AppRes
 pub async fn create_video_preview(source: &Path, destination: &Path) -> AppResult<()> {
     let Some(ffmpeg) = tool_candidate("ffmpeg") else { return Err("Bundled ffmpeg is not available".into()); };
     if let Some(parent) = destination.parent() { tokio::fs::create_dir_all(parent).await?; }
-    let status = Command::new(ffmpeg)
+    let status = media_tool_command(&ffmpeg)
         .args(["-hide_banner", "-loglevel", "error", "-y"])
         .arg("-i").arg(source)
         .args([
