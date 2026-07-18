@@ -10,6 +10,7 @@ import type { GridColumns } from "../store";
 import { attachAssetInteraction } from "../lib/assetSelection";
 import { attachModifierKeyTracking, createModifierKeyState, isRangePressed } from "../lib/modifierKeys";
 import type { SelectionMode } from "../features/selection/selectionModel";
+import { AssetContextMenu } from "./AssetContextMenu";
 
 interface Props {
   assets: Asset[];
@@ -31,6 +32,11 @@ interface Props {
   onToggleChecked: (assetId: string) => void;
   onCheckRange: (assetId: string) => void;
   onPreview: (asset: Asset) => void;
+  onOpen: (asset: Asset) => void;
+  onReveal: (asset: Asset) => void;
+  onRename: (asset: Asset) => void;
+  onMove: (asset: Asset) => void;
+  onTrash: (assetIds: string[]) => void;
   onAddSource: () => void;
 }
 
@@ -132,13 +138,14 @@ export function AssetBrowser(props: Props) {
   if (!props.loading && props.assets.length === 0) return <div className="emptyState compact"><ImageOff size={30} /><h2>{t("emptyTitle")}</h2><p>{t("emptyBody")}</p></div>;
 
   return (
-    <div ref={scrollRef} className="assetViewport" data-view={props.view} data-selection-mode={props.selectionMode} onClick={(event) => { if (props.selectionMode === "browse" && !(event.target as Element).closest("[data-asset-id]")) props.onFocus(); }}>
+    <div ref={scrollRef} className="assetViewport" data-view={props.view} data-selection-mode={props.selectionMode} onClick={(event) => { if (props.selectionMode === "browse" && !(event.target as Element).closest("[data-asset-id]")) props.onFocus(); }} onContextMenu={(event) => event.preventDefault()}>
       <motion.div className="virtualCanvas" animate={contentControls} style={{ height: virtualizer.getTotalSize() }}>
         {virtualRows.map((virtualRow) => {
           const rowAssets = props.assets.slice(virtualRow.index * columns, virtualRow.index * columns + columns);
           return <div key={virtualRow.key} className={props.view === "grid" ? "virtualGridRow" : "virtualListRow"} style={{ transform: `translateY(${virtualRow.start}px)`, height: rowHeight, gridTemplateColumns: props.view === "grid" ? `repeat(${columns}, minmax(0, 1fr))` : undefined }}>
             {rowAssets.map((asset) => props.view === "grid" ? (
-              <article key={asset.id} data-asset-id={asset.id} className={`assetTile ${props.selectionMode === "browse" && props.focusedAssetId === asset.id ? "focused" : ""} ${props.selectionMode === "batch" && checkedSet.has(asset.id) ? "checked" : ""} ${props.dropTargetAssetId === asset.id ? "dragTarget" : ""}`}
+              <AssetContextMenu key={asset.id} asset={asset} selectionMode={props.selectionMode} checkedIds={props.checkedIds} onFocus={props.onFocus} onPreview={props.onPreview} onOpen={props.onOpen} onReveal={props.onReveal} onRename={props.onRename} onMove={props.onMove} onTrash={props.onTrash}>
+              <article data-asset-id={asset.id} className={`assetTile ${props.selectionMode === "browse" && props.focusedAssetId === asset.id ? "focused" : ""} ${props.selectionMode === "batch" && checkedSet.has(asset.id) ? "checked" : ""} ${props.dropTargetAssetId === asset.id ? "dragTarget" : ""}`}
                 tabIndex={0} onDoubleClick={() => { if (props.selectionMode === "browse") props.onPreview(asset); }} onKeyDown={(event) => handleAssetKeyDown(event, asset)}>
                 <div className="assetThumb" style={{ aspectRatio: "4 / 3" }}>
                   {asset.thumbnailPath ? <ThumbnailImage key={asset.thumbnailPath} src={mediaUrl(asset.thumbnailPath) || ""} draggable={false} /> : <div className="thumbFallback"><ImageOff size={22} /></div>}
@@ -148,13 +155,16 @@ export function AssetBrowser(props: Props) {
                 </div>
                 <div className="assetCaption"><div><strong title={asset.filename}>{asset.filename}</strong><span>{formatDate(asset.capturedAt || asset.modifiedAt)}</span></div><div className="miniTags">{asset.tags.slice(0, 3).map((tag) => <i key={tag.id} style={{ background: tag.color }} title={tag.name} />)}</div></div>
               </article>
+              </AssetContextMenu>
             ) : (
-              <div key={asset.id} data-asset-id={asset.id} className={`assetListItem ${props.selectionMode === "browse" && props.focusedAssetId === asset.id ? "focused" : ""} ${props.selectionMode === "batch" && checkedSet.has(asset.id) ? "checked" : ""} ${props.dropTargetAssetId === asset.id ? "dragTarget" : ""}`} tabIndex={0} onDoubleClick={() => { if (props.selectionMode === "browse") props.onPreview(asset); }} onKeyDown={(event) => handleAssetKeyDown(event, asset)}>
+              <AssetContextMenu key={asset.id} asset={asset} selectionMode={props.selectionMode} checkedIds={props.checkedIds} onFocus={props.onFocus} onPreview={props.onPreview} onOpen={props.onOpen} onReveal={props.onReveal} onRename={props.onRename} onMove={props.onMove} onTrash={props.onTrash}>
+              <div data-asset-id={asset.id} className={`assetListItem ${props.selectionMode === "browse" && props.focusedAssetId === asset.id ? "focused" : ""} ${props.selectionMode === "batch" && checkedSet.has(asset.id) ? "checked" : ""} ${props.dropTargetAssetId === asset.id ? "dragTarget" : ""}`} tabIndex={0} onDoubleClick={() => { if (props.selectionMode === "browse") props.onPreview(asset); }} onKeyDown={(event) => handleAssetKeyDown(event, asset)}>
                 <div className="listSelectionSlot">{props.selectionMode === "batch" && <motion.button key="batch-check" className="listCheck tactile" type="button" role="checkbox" aria-checked={checkedSet.has(asset.id)} data-selection-control aria-label={t("toggleSelection", { name: asset.filename })} initial={{ opacity: 0, scale: 0.82 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }} onKeyDown={(event) => handleControlKeyDown(event, asset.id)} onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}><AnimatePresence initial={false}>{checkedSet.has(asset.id) && <motion.i key="checked" className="selectionCheckMark" initial={{ opacity: 0, scale: 0.55 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}><Check size={13} /></motion.i>}</AnimatePresence></motion.button>}</div>
                 <div className="listThumb">{asset.thumbnailPath ? <ThumbnailImage key={asset.thumbnailPath} src={mediaUrl(asset.thumbnailPath) || ""} /> : <ImageOff size={17} />}{asset.mediaKind === "video" && <Film size={12} />}</div>
                 <strong title={asset.filename}>{asset.filename}</strong><span>{asset.mediaKind === "video" ? t("videos") : t("images")}</span><span>{formatBytes(asset.byteSize)}</span><span>{formatDate(asset.modifiedAt)}</span>
                 <div className="miniTags">{asset.tags.slice(0, 4).map((tag) => <i key={tag.id} style={{ background: tag.color }} title={tag.name} />)}</div>
               </div>
+              </AssetContextMenu>
             ))}
             {rowAssets.length === 0 && props.loading && <div className="loadingRow"><span /><span /><span /></div>}
           </div>;

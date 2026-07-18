@@ -56,6 +56,23 @@ export function clearChecked(state: AssetInteractionState): AssetInteractionStat
   return { ...state, checkedIds: [], selectionAnchorId: undefined };
 }
 
+export function getAssetContextTargets(selectionMode: SelectionMode, checkedIds: string[], assetId: string): string[] {
+  return selectionMode === "batch" && checkedIds.includes(assetId) ? [...checkedIds] : [assetId];
+}
+
+export function removeChecked(state: AssetInteractionState, ids: string[]): AssetInteractionState {
+  if (ids.length === 0) return state;
+  const removed = new Set(ids);
+  const checkedIds = state.checkedIds.filter((id) => !removed.has(id));
+  return {
+    ...state,
+    checkedIds,
+    selectionAnchorId: checkedIds.length > 0 && state.selectionAnchorId && !removed.has(state.selectionAnchorId)
+      ? state.selectionAnchorId
+      : undefined,
+  };
+}
+
 export function getAssetActionTargets(state: AssetInteractionState): string[] {
   if (state.selectionMode === "batch") return state.checkedIds;
   return state.focusedAssetId ? [state.focusedAssetId] : [];

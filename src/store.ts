@@ -8,6 +8,7 @@ import {
   exitBatchSelection as exitBatchSelectionState,
   focusAsset as focusAssetState,
   resetAssetContext as resetAssetContextState,
+  removeChecked as removeCheckedState,
   toggleChecked as toggleCheckedState,
 } from "./features/selection/selectionModel";
 import type { SelectionMode } from "./features/selection/selectionModel";
@@ -67,6 +68,7 @@ interface UiState {
   checkRange: (orderedIds: string[], targetId: string) => void;
   clearFocus: () => void;
   clearChecked: () => void;
+  removeChecked: (ids: string[]) => void;
   resetAssetContext: () => void;
   setView: (view: "grid" | "list") => void;
   setGridColumns: (columns: GridColumns) => void;
@@ -97,6 +99,7 @@ export const useUiStore = create<UiState>((set) => ({
   checkRange: (orderedIds, targetId) => set((state) => checkRangeState(state, orderedIds, targetId)),
   clearFocus: () => set((state) => clearFocusState(state)),
   clearChecked: () => set((state) => clearCheckedState(state)),
+  removeChecked: (ids) => set((state) => removeCheckedState(state, ids)),
   resetAssetContext: () => set(resetAssetContextState()),
   setView: (view) => set({ view }),
   setGridColumns: (gridColumns) => set({ gridColumns }),

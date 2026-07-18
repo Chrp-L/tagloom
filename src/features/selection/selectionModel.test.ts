@@ -7,6 +7,8 @@ import {
   exitBatchSelection,
   focusAsset,
   getAssetActionTargets,
+  getAssetContextTargets,
+  removeChecked,
   resetAssetContext,
   toggleChecked,
 } from "./selectionModel";
@@ -85,6 +87,19 @@ describe("asset interaction model", () => {
     expect(getAssetActionTargets(batchState({ focusedAssetId: "a", checkedIds: ["b", "c"] }))).toEqual(["b", "c"]);
     expect(getAssetActionTargets(browseState({ focusedAssetId: "a" }))).toEqual(["a"]);
     expect(getAssetActionTargets(batchState({ focusedAssetId: "a" }))).toEqual([]);
+  });
+
+  it("resolves context targets without changing selection", () => {
+    expect(getAssetContextTargets("batch", ["a", "c"], "a")).toEqual(["a", "c"]);
+    expect(getAssetContextTargets("batch", ["a", "c"], "b")).toEqual(["b"]);
+    expect(getAssetContextTargets("browse", ["a", "c"], "b")).toEqual(["b"]);
+  });
+
+  it("removes only deleted checks and clears a deleted or exhausted anchor", () => {
+    const state = batchState({ checkedIds: ["a", "b", "c"], selectionAnchorId: "b" });
+    expect(removeChecked(state, ["b"])).toMatchObject({ checkedIds: ["a", "c"], selectionAnchorId: undefined });
+    expect(removeChecked(state, ["a", "c"])).toMatchObject({ checkedIds: ["b"], selectionAnchorId: "b" });
+    expect(removeChecked(state, ["a", "b", "c"])).toMatchObject({ checkedIds: [], selectionAnchorId: undefined });
   });
 
   it("resets the complete interaction context to browse mode", () => {

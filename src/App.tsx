@@ -207,7 +207,8 @@ export default function App() {
           <ScanStatusBar job={job} onControl={(command) => { if (job) void api.controlJob(job.id, command); }} />
           <AssetBrowser assets={assets} total={total} view={ui.view} gridColumns={ui.gridColumns} selectionMode={ui.selectionMode} focusedAssetId={ui.focusedAssetId} checkedIds={ui.checkedIds} loading={assetsQuery.isLoading || assetsQuery.isFetchingNextPage}
             hasMore={Boolean(assetsQuery.hasNextPage)} error={assetsQuery.error instanceof Error ? assetsQuery.error.message : assetsQuery.error ? String(assetsQuery.error) : undefined} noSources={!bootstrap.isLoading && (bootstrap.data?.sources.length ?? 0) === 0} contentMotionKey={browserMotionKey} wovenAssetId={wovenAssetId} dropTargetAssetId={tagDrag?.targetAssetId}
-            onLoadMore={() => void assetsQuery.fetchNextPage()} onFocus={ui.focusAsset} onToggleChecked={ui.toggleChecked} onCheckRange={(assetId) => ui.checkRange(orderedAssetIds, assetId)} onPreview={preview} onAddSource={addFolder} />
+            onLoadMore={() => void assetsQuery.fetchNextPage()} onFocus={ui.focusAsset} onToggleChecked={ui.toggleChecked} onCheckRange={(assetId) => ui.checkRange(orderedAssetIds, assetId)} onPreview={preview}
+            onRename={setRenameAsset} onMove={(asset) => void move(asset)} onOpen={(asset) => void action(() => api.openAsset(asset.id))} onReveal={(asset) => void action(() => api.revealAsset(asset.id))} onTrash={requestTrash} onAddSource={addFolder} />
         </main>
         {ui.inspectorOpen && <Inspector selectionMode={ui.selectionMode} focusedAsset={focusedAsset} checkedAssets={checkedAssets} tags={bootstrap.data?.tags ?? []} collections={bootstrap.data?.collections ?? []}
           onSetTag={(tagId, attached) => void setTags(tagId, attached)} onAddCollection={(collectionId) => void action(() => api.setCollectionAssets(collectionId, inspectorTargetIds, true), t("operationComplete"))}
@@ -218,10 +219,11 @@ export default function App() {
 
       <CreateEntityDialog open={createKind !== null} kind={createKind ?? "tag"} onOpenChange={(open) => { if (!open) setCreateKind(null); }} onCreate={(name, color) => void createEntity(name, color)} />
       <ConfirmTrashDialog open={trashTargetIds.length > 0} count={trashTargetIds.length} onOpenChange={(open) => { if (!open) setTrashTargetIds([]); }} onConfirm={() => void action(async () => {
-        await api.trashAssets(trashTargetIds);
+        const deletedIds = [...trashTargetIds];
+        await api.trashAssets(deletedIds);
         const state = useUiStore.getState();
-        if (state.focusedAssetId && trashTargetIds.includes(state.focusedAssetId)) state.clearFocus();
-        state.clearChecked();
+        if (state.focusedAssetId && deletedIds.includes(state.focusedAssetId)) state.clearFocus();
+        state.removeChecked(deletedIds);
         setTrashTargetIds([]);
       }, t("operationComplete"))} />
       <ConfirmLibraryEntityDeleteDialog
