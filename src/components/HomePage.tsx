@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { mediaUrl } from "../api";
 import { formatDate, formatDuration } from "../lib/format";
-import type { Asset, HomeSnapshot } from "../types";
+import type { Asset, HomeSnapshot, JobProgress } from "../types";
+import { HomeLoomWidget, resolveHomeLoomState } from "./HomeLoomWidget";
 
 type RecentKind = "viewed" | "imported" | "modified";
 
@@ -13,6 +14,7 @@ interface Props {
   loading: boolean;
   error?: string;
   summary?: { total: number; images: number; videos: number; collections: number };
+  job?: JobProgress;
   focusedAssetId?: string;
   onOpenCollection: (id: string) => void;
   onViewCollections: () => void;
@@ -43,13 +45,17 @@ export function HomePage(props: Props) {
     return props.snapshot.recentModified;
   }, [props.snapshot, recentKind]);
   const visibleRecent = recentAssets.slice(0, 5);
+  const loomState = resolveHomeLoomState(props.job);
+  const loomStatus = loomState === "scanning"
+    ? t("scanning", { completed: props.job?.completed ?? 0, total: props.job?.total || "—", defaultValue: "正在整理 {{completed}} / {{total}}" })
+    : t(loomState === "paused" ? "loomPaused" : loomState === "error" ? "loomError" : "indexReady", { defaultValue: loomState === "paused" ? "扫描已暂停" : loomState === "error" ? "扫描出现问题" : "已更新" });
   useEffect(() => { localStorage.setItem(HOME_SECTION_STATE_KEY, JSON.stringify(sections)); }, [sections]);
   const toggleSection = (section: "collections" | "recent") => setSections((state) => ({ ...state, [section]: !state[section] }));
 
   return (
     <div className="homePage" onClick={(event) => { if (!(event.target as Element).closest("[data-home-action]")) props.onFocus(); }}>
       <section className="homeDashboardPulse" aria-label={t("home")}>
-        <div className="homePulseLead"><span className="homePulseThread" aria-hidden="true"><i /><b /></span><strong>{t("home")}</strong><small>{t("libraryOverview")}</small></div>
+        <div className="homePulseLead"><HomeLoomWidget job={props.job} /><div className="homePulseCopy"><strong>{t("homeLoom", { defaultValue: "素材织机" })}</strong><small>{loomStatus}</small></div></div>
         <div className="homePulseMetric"><Images size={15} aria-hidden="true" /><span>{t("allItems")}</span><strong>{props.summary?.total ?? 0}</strong></div>
         <div className="homePulseMetric"><Images size={15} aria-hidden="true" /><span>{t("images")}</span><strong>{props.summary?.images ?? 0}</strong></div>
         <div className="homePulseMetric"><Video size={15} aria-hidden="true" /><span>{t("videos")}</span><strong>{props.summary?.videos ?? 0}</strong></div>

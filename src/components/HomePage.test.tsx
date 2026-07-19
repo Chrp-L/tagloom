@@ -30,6 +30,8 @@ afterEach(() => {
 describe("HomePage", () => {
   it("shows up to six collection cards and uses supplied cover assets", () => {
     render(<HomePage snapshot={snapshot} loading={false} onOpenCollection={vi.fn()} onViewCollections={vi.fn()} onCreateCollection={vi.fn()} onFocus={vi.fn()} onPreview={vi.fn()} />);
+    expect(document.querySelectorAll(".homeLoomWidget")).toHaveLength(1);
+    expect(document.querySelector(".homeLoomWidget img")).not.toBeInTheDocument();
     expect(document.querySelectorAll(".homeCollectionCard")).toHaveLength(6);
     expect(screen.getByText("Custom cover")).toBeInTheDocument();
     expect(document.querySelector('img[src="https://example.test/first.jpg"]')).toBeInTheDocument();

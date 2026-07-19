@@ -5,6 +5,9 @@ const zh = {
   translation: {
     library: "资料库",
     home: "首页",
+    homeLoom: "素材织机",
+    loomPaused: "扫描已暂停",
+    loomError: "扫描出现问题",
     myCollections: "我的相册组",
     viewAll: "查看全部",
     recentAssets: "最近素材",
@@ -133,7 +136,7 @@ const zh = {
 
 const en = {
   translation: {
-    library: "Library", home: "Home", myCollections: "My albums", viewAll: "View all",
+    library: "Library", home: "Home", homeLoom: "Media loom", loomPaused: "Scan paused", loomError: "Scan needs attention", myCollections: "My albums", viewAll: "View all",
     recentAssets: "Recent assets", recentViewed: "Recently viewed", recentImported: "Recently imported", recentModified: "Recently modified",
     noRecentViewed: "Assets you preview will appear here.", libraryOverview: "Library overview", indexStatus: "Index status", indexReady: "Up to date", recentActivity: "Recent activity",
     setCollectionCover: "Set as current album cover", clearCollectionCover: "Use automatic cover", allItems: "All items", images: "Images", videos: "Videos",
