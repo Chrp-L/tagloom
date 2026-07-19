@@ -9,6 +9,7 @@ import type { SelectionMode } from "../features/selection/selectionModel";
 import { SignalLoom } from "./SignalLoom";
 
 interface ToolbarProps {
+  mode?: "assets" | "home";
   title: string;
   count: number;
   search: string;
@@ -29,6 +30,7 @@ interface ToolbarProps {
 
 export function Toolbar(props: ToolbarProps) {
   const { t } = useTranslation();
+  const homeMode = props.mode === "home";
   const sorts = [{ value: "newest", label: t("newest") }, { value: "oldest", label: t("oldest") }, { value: "name", label: t("filename") }, { value: "largest", label: t("largest") }];
   const currentSort = sorts.find((item) => item.value === props.sort) ?? sorts[0];
   return (
@@ -38,12 +40,12 @@ export function Toolbar(props: ToolbarProps) {
         <button className="iconButton tactile" title={t("settings")} onClick={props.onSettings}><Settings2 size={18} /></button>
       </div>
       <div className="toolbarLine">
-        <div className="toolbarPrimary"><AnimatePresence initial={false}>{props.selectionMode === "batch" ? (
+        <div className="toolbarPrimary"><AnimatePresence initial={false}>{!homeMode && props.selectionMode === "batch" ? (
           <motion.div key="selection" className="selectionBanner" initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}><span><Check size={16} />{t("selected", { count: props.checkedCount })}</span></motion.div>
         ) : (
           <motion.label key="search" className="searchField" initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}><Search size={17} /><input value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder={t("search")} /><kbd>Ctrl K</kbd></motion.label>
         )}</AnimatePresence></div>
-        <div className="toolbarActions">
+        {!homeMode && <div className="toolbarActions">
           <button className="textButton tactile batchModeButton" aria-pressed={props.selectionMode === "batch"} onClick={props.selectionMode === "batch" ? props.onExitBatch : props.onEnterBatch}>
             {props.selectionMode === "batch" ? <X size={16} /> : <ListChecks size={16} />}
             <span>{props.selectionMode === "batch" ? t("exitBatchSelection") : t("batchSelect")}</span>
@@ -61,7 +63,7 @@ export function Toolbar(props: ToolbarProps) {
             <button className="tactile" aria-pressed={props.view === "grid"} title={t("gridView")} onClick={() => props.onView("grid")}>{props.view === "grid" && <motion.span className="segmentedPlate" layoutId="view-segment" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}<span className="segmentContent"><Grid2X2 size={16} /></span></button>
             <button className="tactile" aria-pressed={props.view === "list"} title={t("listView")} onClick={() => props.onView("list")}>{props.view === "list" && <motion.span className="segmentedPlate" layoutId="view-segment" transition={{ type: "spring", stiffness: 520, damping: 38 }} />}<span className="segmentContent"><List size={17} /></span></button>
           </div>
-        </div>
+        </div>}
       </div>
     </header>
   );

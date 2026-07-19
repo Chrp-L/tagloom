@@ -6,7 +6,9 @@ import { useTranslation } from "react-i18next";
 import { api } from "./api";
 import { AssetBrowser } from "./components/AssetBrowser";
 import { ConfirmLibraryEntityDeleteDialog, ConfirmTrashDialog, CreateEntityDialog, PreviewDialog, RenameDialog, SettingsDialog } from "./components/Dialogs";
+import { HomePage } from "./components/HomePage";
 import { Inspector } from "./components/Inspector";
+import { LibraryOverview } from "./components/LibraryOverview";
 import { Sidebar } from "./components/Sidebar";
 import { ScanStatusBar } from "./components/ScanStatusBar";
 import { TagDragOverlay } from "./components/TagDragOverlay";
@@ -14,7 +16,7 @@ import { ToastRegion } from "./components/ToastRegion";
 import type { ToastMessage } from "./components/ToastRegion";
 import { Toolbar } from "./components/Toolbar";
 import { WindowChrome } from "./components/WindowChrome";
-import { useLibraryQueries } from "./hooks/useLibraryQueries";
+import { useHomeQuery, useLibraryQueries } from "./hooks/useLibraryQueries";
 import { useLibraryActivity } from "./hooks/useLibraryActivity";
 import { useTagDrag } from "./hooks/useTagDrag";
 import { useTransientCue } from "./hooks/useTransientCue";
@@ -41,17 +43,29 @@ export default function App() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [preparedPreviews, setPreparedPreviews] = useState<Record<string, string>>({});
+  const [previewSourceAssets, setPreviewSourceAssets] = useState<Asset[]>();
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [language, setLanguage] = useState<LanguageChoice>((localStorage.getItem("tagloom-language-choice") as LanguageChoice) || "system");
   const { cue: weaveCue, trigger: cueWeave } = useTransientCue();
 
   const { bootstrap, jobs: jobsQuery, assets: assetsQuery, items: assets, total } = useLibraryQueries(ui.navigation, deferredSearch, sort);
+  const homeQuery = useHomeQuery(ui.navigation.kind === "home");
   const checkedIdSet = useMemo(() => new Set(ui.checkedIds), [ui.checkedIds]);
   const orderedAssetIds = useMemo(() => assets.map((asset) => asset.id), [assets]);
   const checkedAssets = useMemo(() => assets.filter((asset) => checkedIdSet.has(asset.id)), [assets, checkedIdSet]);
-  const focusedAsset = useMemo(() => assets.find((asset) => asset.id === ui.focusedAssetId), [assets, ui.focusedAssetId]);
+  const homeAssetMap = useMemo(() => {
+    const map = new Map<string, Asset>();
+    const snapshot = homeQuery.data;
+    if (!snapshot) return map;
+    for (const asset of [...snapshot.recentViewed, ...snapshot.recentImported, ...snapshot.recentModified]) map.set(asset.id, asset);
+    for (const collection of snapshot.collections) if (collection.coverAsset) map.set(collection.coverAsset.id, collection.coverAsset);
+    return map;
+  }, [homeQuery.data]);
+  const focusedAsset = useMemo(() => assets.find((asset) => asset.id === ui.focusedAssetId) ?? (ui.focusedAssetId ? homeAssetMap.get(ui.focusedAssetId) : undefined), [assets, homeAssetMap, ui.focusedAssetId]);
+  const collectionNavigationId = ui.navigation.kind === "collection" ? ui.navigation.id : undefined;
+  const activeCollection = useMemo(() => collectionNavigationId ? bootstrap.data?.collections.find((collection) => collection.id === collectionNavigationId) : undefined, [bootstrap.data?.collections, collectionNavigationId]);
   const inspectorTargetIds = useMemo(() => getAssetActionTargets(ui), [ui.checkedIds, ui.focusedAssetId]);
-  const previewAssets = useMemo(() => assets.map((asset) => preparedPreviews[asset.id] ? { ...asset, previewPath: preparedPreviews[asset.id] } : asset), [assets, preparedPreviews]);
+  const previewAssets = useMemo(() => (previewSourceAssets ?? assets).map((asset) => preparedPreviews[asset.id] ? { ...asset, previewPath: preparedPreviews[asset.id] } : asset), [assets, preparedPreviews, previewSourceAssets]);
   const browserMotionKey = useMemo(() => JSON.stringify([ui.navigation, deferredSearch, sort, ui.view, ui.gridColumns]), [deferredSearch, sort, ui.gridColumns, ui.navigation, ui.view]);
 
   const notify = useCallback((message: string, tone: ToastMessage["tone"] = "success") => {
@@ -59,7 +73,7 @@ export default function App() {
     window.setTimeout(() => setToasts((items) => items.filter((item) => item.id !== id)), 3200);
   }, []);
   const refresh = useCallback(async () => {
-    await Promise.all([queryClient.invalidateQueries({ queryKey: ["bootstrap"] }), queryClient.invalidateQueries({ queryKey: ["assets"] })]);
+    await Promise.all([queryClient.invalidateQueries({ queryKey: ["bootstrap"] }), queryClient.invalidateQueries({ queryKey: ["assets"] }), queryClient.invalidateQueries({ queryKey: ["home"] })]);
   }, [queryClient]);
   const action = useCallback(async (operation: () => Promise<unknown>, success?: string) => {
     try { await operation(); await refresh(); if (success) notify(success); }
@@ -100,6 +114,7 @@ export default function App() {
 
   const title = useMemo(() => {
     const data = bootstrap.data;
+    if (ui.navigation.kind === "home") return t("home");
     if (ui.navigation.kind === "media") return ui.navigation.mediaKind === "image" ? t("images") : t("videos");
     if (ui.navigation.kind === "source") { const id = ui.navigation.id; return data?.sources.find((item) => item.id === id)?.name ?? t("folders"); }
     if (ui.navigation.kind === "tag") { const id = ui.navigation.id; return data?.tags.find((item) => item.id === id)?.name ?? t("tags"); }
@@ -153,7 +168,12 @@ export default function App() {
     void setTags(tag.id, true, targets);
   }, [checkedIdSet, setTags, ui.checkedIds]);
   const { drag: tagDrag, wovenAssetId, begin: beginTagDrag, canActivate: canActivateTag } = useTagDrag(dropTag);
-  const preview = (asset: Asset) => { setPreviewIndex(Math.max(0, assets.findIndex((item) => item.id === asset.id))); setPreviewOpen(true); };
+  const preview = (asset: Asset, contextAssets = assets) => {
+    setPreviewSourceAssets(contextAssets);
+    setPreviewIndex(Math.max(0, contextAssets.findIndex((item) => item.id === asset.id)));
+    setPreviewOpen(true);
+    void api.recordAssetViewed(asset.id).then(() => queryClient.invalidateQueries({ queryKey: ["home"] }));
+  };
   const prepareVideo = async (asset: Asset) => {
     const existing = preparedPreviews[asset.id] || asset.previewPath;
     if (existing) return existing;
@@ -181,6 +201,7 @@ export default function App() {
     localStorage.setItem("tagloom-language", resolved); void i18n.changeLanguage(resolved); void api.setSetting("language", value);
   };
   const changeSearch = useCallback((value: string) => {
+    if (useUiStore.getState().navigation.kind === "home" && value.trim()) useUiStore.getState().setNavigation({ kind: "all" });
     useUiStore.getState().resetAssetContext();
     setSearch(value);
   }, []);
@@ -202,15 +223,21 @@ export default function App() {
           onDeleteTag={(tag) => setLibraryDeleteTarget({ kind: "tag", id: tag.id, name: tag.name })}
           onTagPointerDown={beginTagDrag} onTagActivate={(id) => { if (canActivateTag()) { cueWeave("filter"); ui.setNavigation({ kind: "tag", id }); } }} />
         <main className="workspace">
-          <Toolbar title={title} count={total} search={search} sort={sort || "newest"} view={ui.view} gridColumns={ui.gridColumns} selectionMode={ui.selectionMode} checkedCount={ui.checkedIds.length} eventCue={weaveCue}
+          <Toolbar mode={ui.navigation.kind === "home" ? "home" : "assets"} title={title} count={total} search={search} sort={sort || "newest"} view={ui.view} gridColumns={ui.gridColumns} selectionMode={ui.selectionMode} checkedCount={ui.checkedIds.length} eventCue={weaveCue}
             onSearch={changeSearch} onSort={changeSort} onView={(value) => { cueWeave("layout"); ui.setView(value); }} onGridColumns={(value) => { cueWeave("layout"); ui.setGridColumns(value); }} onEnterBatch={ui.enterBatchSelection} onExitBatch={ui.exitBatchSelection} onSettings={() => setSettingsOpen(true)} />
           <ScanStatusBar job={job} onControl={(command) => { if (job) void api.controlJob(job.id, command); }} />
-          <AssetBrowser assets={assets} total={total} view={ui.view} gridColumns={ui.gridColumns} selectionMode={ui.selectionMode} focusedAssetId={ui.focusedAssetId} checkedIds={ui.checkedIds} loading={assetsQuery.isLoading || assetsQuery.isFetchingNextPage}
+          {ui.navigation.kind === "home" ? <HomePage snapshot={homeQuery.data} loading={homeQuery.isLoading} error={homeQuery.error instanceof Error ? homeQuery.error.message : homeQuery.error ? String(homeQuery.error) : undefined} focusedAssetId={ui.focusedAssetId}
+            summary={{ total: bootstrap.data?.totalAssets ?? total, images: bootstrap.data?.imageCount ?? 0, videos: bootstrap.data?.videoCount ?? 0, collections: bootstrap.data?.collections.length ?? 0 }}
+            onOpenCollection={(id) => ui.setNavigation({ kind: "collection", id })} onViewCollections={() => ui.revealSidebarSection("collections")} onCreateCollection={() => setCreateKind("collection")}
+            onFocus={(asset) => ui.focusAsset(asset?.id)} onPreview={(asset, context) => preview(asset, context)} /> : <AssetBrowser assets={assets} total={total} view={ui.view} gridColumns={ui.gridColumns} selectionMode={ui.selectionMode} focusedAssetId={ui.focusedAssetId} checkedIds={ui.checkedIds} loading={assetsQuery.isLoading || assetsQuery.isFetchingNextPage}
             hasMore={Boolean(assetsQuery.hasNextPage)} error={assetsQuery.error instanceof Error ? assetsQuery.error.message : assetsQuery.error ? String(assetsQuery.error) : undefined} noSources={!bootstrap.isLoading && (bootstrap.data?.sources.length ?? 0) === 0} contentMotionKey={browserMotionKey} wovenAssetId={wovenAssetId} dropTargetAssetId={tagDrag?.targetAssetId}
             onLoadMore={() => void assetsQuery.fetchNextPage()} onFocus={ui.focusAsset} onToggleChecked={ui.toggleChecked} onCheckRange={(assetId) => ui.checkRange(orderedAssetIds, assetId)} onPreview={preview}
-            onRename={setRenameAsset} onMove={(asset) => void move(asset)} onOpen={(asset) => void action(() => api.openAsset(asset.id))} onReveal={(asset) => void action(() => api.revealAsset(asset.id))} onTrash={requestTrash} onAddSource={addFolder} />
+            onRename={setRenameAsset} onMove={(asset) => void move(asset)} onOpen={(asset) => void action(() => api.openAsset(asset.id))} onReveal={(asset) => void action(() => api.revealAsset(asset.id))} onTrash={requestTrash}
+            collectionContext={activeCollection ? { id: activeCollection.id, coverAssetId: activeCollection.coverAssetId } : undefined}
+            onSetCollectionCover={(collectionId, assetId) => void action(() => api.setCollectionCover(collectionId, assetId), t("operationComplete"))}
+            onClearCollectionCover={(collectionId) => void action(() => api.clearCollectionCover(collectionId), t("operationComplete"))} onAddSource={addFolder} />}
         </main>
-        {ui.inspectorOpen && <Inspector selectionMode={ui.selectionMode} focusedAsset={focusedAsset} checkedAssets={checkedAssets} tags={bootstrap.data?.tags ?? []} collections={bootstrap.data?.collections ?? []}
+        {ui.inspectorOpen && ui.navigation.kind === "home" && !focusedAsset && ui.selectionMode === "browse" ? <LibraryOverview data={bootstrap.data} jobs={jobsQuery.data} onAddSource={addFolder} /> : ui.inspectorOpen && <Inspector selectionMode={ui.selectionMode} focusedAsset={focusedAsset} checkedAssets={checkedAssets} tags={bootstrap.data?.tags ?? []} collections={bootstrap.data?.collections ?? []}
           onSetTag={(tagId, attached) => void setTags(tagId, attached)} onAddCollection={(collectionId) => void action(() => api.setCollectionAssets(collectionId, inspectorTargetIds, true), t("operationComplete"))}
           onSaveNote={(id, note) => void action(() => api.updateAssetNote(id, note), t("operationComplete"))} onRename={setRenameAsset} onMove={(asset) => void move(asset)}
           onTrash={() => requestTrash(inspectorTargetIds)} onReveal={(asset) => void action(() => api.revealAsset(asset.id))} onOpen={(asset) => void action(() => api.openAsset(asset.id))} />}

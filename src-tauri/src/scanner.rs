@@ -104,8 +104,13 @@ async fn scan_source(
         .bind(source_id).fetch_all(pool).await?;
     for path in existing {
         if !seen.contains(&path) {
+            let updated_at = Utc::now().to_rfc3339();
             sqlx::query("UPDATE assets SET status='missing', updated_at=? WHERE path=?")
-                .bind(Utc::now().to_rfc3339()).bind(path).execute(pool).await?;
+                .bind(&updated_at).bind(&path).execute(pool).await?;
+            sqlx::query(
+                "UPDATE collections SET cover_asset_id=NULL, updated_at=?
+                 WHERE cover_asset_id IN (SELECT id FROM assets WHERE path=?)"
+            ).bind(updated_at).bind(path).execute(pool).await?;
         }
     }
     let now = Utc::now().to_rfc3339();

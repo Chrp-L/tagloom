@@ -29,3 +29,7 @@ export function useLibraryQueries(navigation: NavigationFilter, search: string, 
   const items = useMemo(() => assets.data?.pages.flatMap((page) => page.items) ?? [], [assets.data]);
   return { bootstrap, jobs, assets, items, total: assets.data?.pages[0]?.total ?? 0 };
 }
+
+export function useHomeQuery(enabled: boolean) {
+  return useQuery({ queryKey: ["home"], queryFn: api.getHomeSnapshot, enabled });
+}

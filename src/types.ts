@@ -22,6 +22,7 @@ export interface Collection {
   id: string;
   name: string;
   assetCount: number;
+  coverAssetId?: string;
 }
 
 export interface Asset {
@@ -68,6 +69,21 @@ export interface LibraryBootstrap {
   totalAssets: number;
   imageCount: number;
   videoCount: number;
+}
+
+export interface CollectionHomeCard {
+  id: string;
+  name: string;
+  assetCount: number;
+  coverAsset?: Asset;
+  hasCustomCover: boolean;
+}
+
+export interface HomeSnapshot {
+  collections: CollectionHomeCard[];
+  recentViewed: Asset[];
+  recentImported: Asset[];
+  recentModified: Asset[];
 }
 
 export interface JobProgress {

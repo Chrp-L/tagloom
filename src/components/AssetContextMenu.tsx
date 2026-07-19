@@ -1,5 +1,5 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { ExternalLink, Eye, FolderInput, FolderSearch, Pencil, Trash2 } from "lucide-react";
+import { ExternalLink, Eye, FolderInput, FolderSearch, GalleryHorizontalEnd, Pencil, Trash2 } from "lucide-react";
 import type { ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { getAssetContextTargets } from "../features/selection/selectionModel";
@@ -10,6 +10,7 @@ interface Props {
   asset: Asset;
   selectionMode: SelectionMode;
   checkedIds: string[];
+  collectionContext?: { id: string; coverAssetId?: string };
   children: ReactElement;
   onFocus: (assetId: string) => void;
   onPreview: (asset: Asset) => void;
@@ -18,12 +19,16 @@ interface Props {
   onRename: (asset: Asset) => void;
   onMove: (asset: Asset) => void;
   onTrash: (assetIds: string[]) => void;
+  onSetCollectionCover?: (collectionId: string, assetId: string) => void;
+  onClearCollectionCover?: (collectionId: string) => void;
 }
 
 export function AssetContextMenu(props: Props) {
   const { t } = useTranslation();
   const targetIds = getAssetContextTargets(props.selectionMode, props.checkedIds, props.asset.id);
   const multiple = targetIds.length > 1;
+  const showCoverAction = props.selectionMode === "browse" && Boolean(props.collectionContext);
+  const isCustomCover = props.collectionContext?.coverAssetId === props.asset.id;
 
   return (
     <ContextMenu.Root>
@@ -53,6 +58,11 @@ export function AssetContextMenu(props: Props) {
           <ContextMenu.Item className="menuItem" onSelect={() => props.onPreview(props.asset)}><Eye size={15} />{t("preview")}</ContextMenu.Item>
           <ContextMenu.Item className="menuItem" onSelect={() => props.onOpen(props.asset)}><ExternalLink size={15} />{t("openExternal")}</ContextMenu.Item>
           <ContextMenu.Item className="menuItem" onSelect={() => props.onReveal(props.asset)}><FolderSearch size={15} />{t("reveal")}</ContextMenu.Item>
+          {showCoverAction && <ContextMenu.Item className="menuItem" onSelect={() => {
+            if (!props.collectionContext) return;
+            if (isCustomCover) props.onClearCollectionCover?.(props.collectionContext.id);
+            else props.onSetCollectionCover?.(props.collectionContext.id, props.asset.id);
+          }}><GalleryHorizontalEnd size={15} />{t(isCustomCover ? "clearCollectionCover" : "setCollectionCover")}</ContextMenu.Item>}
           <ContextMenu.Separator className="menuSeparator" />
           <ContextMenu.Item className="menuItem" disabled={multiple} onSelect={() => props.onRename(props.asset)}>
             <Pencil size={15} />{t("rename")}{multiple && <span className="menuHint">{t("singleItemOnly")}</span>}

@@ -27,6 +27,7 @@ pub struct Collection {
     pub id: String,
     pub name: String,
     pub asset_count: i64,
+    pub cover_asset_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]
@@ -88,6 +89,25 @@ pub struct LibraryBootstrap {
     pub total_assets: i64,
     pub image_count: i64,
     pub video_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionHomeCard {
+    pub id: String,
+    pub name: String,
+    pub asset_count: i64,
+    pub cover_asset: Option<Asset>,
+    pub has_custom_cover: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeSnapshot {
+    pub collections: Vec<CollectionHomeCard>,
+    pub recent_viewed: Vec<Asset>,
+    pub recent_imported: Vec<Asset>,
+    pub recent_modified: Vec<Asset>,
 }
 
 #[derive(Debug, Clone, Serialize)]
