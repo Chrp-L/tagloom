@@ -31,8 +31,9 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn new() -> AppResult<Self> {
-        let project = ProjectDirs::from("app", "tagloom", "Tagloom")
+    pub async fn new(app_identifier: &str) -> AppResult<Self> {
+        let application = project_application(app_identifier, cfg!(debug_assertions));
+        let project = ProjectDirs::from("app", "tagloom", application)
             .ok_or_else(|| AppError::Message("Unable to resolve Tagloom data folders".into()))?;
         let data_dir = project.data_dir().to_path_buf();
         let cache_dir = project.cache_dir().to_path_buf();
@@ -91,5 +92,25 @@ impl AppState {
 
     pub async fn db(&self) -> SqlitePool {
         self.pool.read().await.clone()
+    }
+}
+
+fn project_application(app_identifier: &str, debug_build: bool) -> &'static str {
+    if debug_build || app_identifier.ends_with(".dev") {
+        "TagloomDev"
+    } else {
+        "Tagloom"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::project_application;
+
+    #[test]
+    fn isolates_debug_and_development_config_data() {
+        assert_eq!(project_application("app.tagloom.desktop", false), "Tagloom");
+        assert_eq!(project_application("app.tagloom.desktop", true), "TagloomDev");
+        assert_eq!(project_application("app.tagloom.desktop.dev", false), "TagloomDev");
     }
 }

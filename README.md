@@ -30,8 +30,12 @@ git clone https://github.com/Chrp-L/tagloom.git
 cd tagloom
 npm ci
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-media-tools.ps1
-npm run tauri dev
+npm run tauri:dev
 ```
+
+`npm run tauri:dev` 使用 `Tagloom Dev` 身份和独立的数据目录，不会读取或修改安装版的数据库、缩略图、视频代理、日志与备份。开发窗口标题也会显示为 `Tagloom Dev`。正式安装版继续使用原有 `Tagloom` 数据目录。
+
+日常开发请使用 `npm run tauri:dev`，不要用 release 模式直接启动默认 Tauri 配置。普通 debug 构建在后端也会自动使用开发数据目录，作为误用命令时的保护。
 
 媒体工具不会提交到 Git。安装脚本会把以下依赖放入 `src-tauri/binaries`：
 
@@ -49,10 +53,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-media-tools.ps1 -Force
 ```powershell
 npm test
 npm run build
-npm run tauri build
+npm run tauri:build
 ```
 
-`npm run build` 只构建前端资源。`npm run tauri build` 会生成 Windows NSIS 安装包，并要求媒体工具已经安装。
+`npm run build` 只构建前端资源。`npm run tauri:build` 会使用正式应用身份生成 Windows NSIS 安装包，并要求媒体工具已经安装。
 
 ## 数据与隐私
 

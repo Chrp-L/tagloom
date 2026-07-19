@@ -11,7 +11,8 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let state = tauri::async_runtime::block_on(AppState::new())
+    let context = tauri::generate_context!();
+    let state = tauri::async_runtime::block_on(AppState::new(&context.config().identifier))
         .expect("Tagloom database could not be initialized");
 
     tauri::Builder::default()
@@ -65,6 +66,6 @@ pub fn run() {
             get_settings,
             set_setting,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running Tagloom");
 }
