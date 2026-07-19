@@ -35,6 +35,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_bootstrap,
+            get_home_snapshot,
             list_assets,
             add_source,
             remove_source,
@@ -49,6 +50,9 @@ pub fn run() {
             create_collection,
             delete_collection,
             set_collection_assets,
+            set_collection_cover,
+            clear_collection_cover,
+            record_asset_viewed,
             update_asset_note,
             prepare_video_preview,
             move_asset,

@@ -20,6 +20,7 @@ interface Props {
   selectionMode: SelectionMode;
   focusedAssetId?: string;
   checkedIds: string[];
+  collectionContext?: { id: string; coverAssetId?: string };
   loading: boolean;
   error?: string;
   hasMore: boolean;
@@ -37,6 +38,8 @@ interface Props {
   onRename: (asset: Asset) => void;
   onMove: (asset: Asset) => void;
   onTrash: (assetIds: string[]) => void;
+  onSetCollectionCover?: (collectionId: string, assetId: string) => void;
+  onClearCollectionCover?: (collectionId: string) => void;
   onAddSource: () => void;
 }
 
@@ -144,7 +147,7 @@ export function AssetBrowser(props: Props) {
           const rowAssets = props.assets.slice(virtualRow.index * columns, virtualRow.index * columns + columns);
           return <div key={virtualRow.key} className={props.view === "grid" ? "virtualGridRow" : "virtualListRow"} style={{ transform: `translateY(${virtualRow.start}px)`, height: rowHeight, gridTemplateColumns: props.view === "grid" ? `repeat(${columns}, minmax(0, 1fr))` : undefined }}>
             {rowAssets.map((asset) => props.view === "grid" ? (
-              <AssetContextMenu key={asset.id} asset={asset} selectionMode={props.selectionMode} checkedIds={props.checkedIds} onFocus={props.onFocus} onPreview={props.onPreview} onOpen={props.onOpen} onReveal={props.onReveal} onRename={props.onRename} onMove={props.onMove} onTrash={props.onTrash}>
+              <AssetContextMenu key={asset.id} asset={asset} selectionMode={props.selectionMode} checkedIds={props.checkedIds} collectionContext={props.collectionContext} onFocus={props.onFocus} onPreview={props.onPreview} onOpen={props.onOpen} onReveal={props.onReveal} onRename={props.onRename} onMove={props.onMove} onTrash={props.onTrash} onSetCollectionCover={props.onSetCollectionCover} onClearCollectionCover={props.onClearCollectionCover}>
               <article data-asset-id={asset.id} className={`assetTile ${props.selectionMode === "browse" && props.focusedAssetId === asset.id ? "focused" : ""} ${props.selectionMode === "batch" && checkedSet.has(asset.id) ? "checked" : ""} ${props.dropTargetAssetId === asset.id ? "dragTarget" : ""}`}
                 tabIndex={0} onDoubleClick={() => { if (props.selectionMode === "browse") props.onPreview(asset); }} onKeyDown={(event) => handleAssetKeyDown(event, asset)}>
                 <div className="assetThumb" style={{ aspectRatio: "4 / 3" }}>
@@ -157,7 +160,7 @@ export function AssetBrowser(props: Props) {
               </article>
               </AssetContextMenu>
             ) : (
-              <AssetContextMenu key={asset.id} asset={asset} selectionMode={props.selectionMode} checkedIds={props.checkedIds} onFocus={props.onFocus} onPreview={props.onPreview} onOpen={props.onOpen} onReveal={props.onReveal} onRename={props.onRename} onMove={props.onMove} onTrash={props.onTrash}>
+              <AssetContextMenu key={asset.id} asset={asset} selectionMode={props.selectionMode} checkedIds={props.checkedIds} collectionContext={props.collectionContext} onFocus={props.onFocus} onPreview={props.onPreview} onOpen={props.onOpen} onReveal={props.onReveal} onRename={props.onRename} onMove={props.onMove} onTrash={props.onTrash} onSetCollectionCover={props.onSetCollectionCover} onClearCollectionCover={props.onClearCollectionCover}>
               <div data-asset-id={asset.id} className={`assetListItem ${props.selectionMode === "browse" && props.focusedAssetId === asset.id ? "focused" : ""} ${props.selectionMode === "batch" && checkedSet.has(asset.id) ? "checked" : ""} ${props.dropTargetAssetId === asset.id ? "dragTarget" : ""}`} tabIndex={0} onDoubleClick={() => { if (props.selectionMode === "browse") props.onPreview(asset); }} onKeyDown={(event) => handleAssetKeyDown(event, asset)}>
                 <div className="listSelectionSlot">{props.selectionMode === "batch" && <motion.button key="batch-check" className="listCheck tactile" type="button" role="checkbox" aria-checked={checkedSet.has(asset.id)} data-selection-control aria-label={t("toggleSelection", { name: asset.filename })} initial={{ opacity: 0, scale: 0.82 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }} onKeyDown={(event) => handleControlKeyDown(event, asset.id)} onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}><AnimatePresence initial={false}>{checkedSet.has(asset.id) && <motion.i key="checked" className="selectionCheckMark" initial={{ opacity: 0, scale: 0.55 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}><Check size={13} /></motion.i>}</AnimatePresence></motion.button>}</div>
                 <div className="listThumb">{asset.thumbnailPath ? <ThumbnailImage key={asset.thumbnailPath} src={mediaUrl(asset.thumbnailPath) || ""} /> : <ImageOff size={17} />}{asset.mediaKind === "video" && <Film size={12} />}</div>

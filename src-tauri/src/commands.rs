@@ -1,13 +1,13 @@
 use crate::{
     error::{AppError, AppResult},
     media,
-    models::{Asset, AssetPage, AssetQuery, AssetRow, Collection, JobProgress, JobRow, LibraryBootstrap, Setting, SourceRoot, Tag},
+    models::{Asset, AssetPage, AssetQuery, AssetRow, Collection, CollectionHomeCard, HomeSnapshot, JobProgress, JobRow, LibraryBootstrap, Setting, SourceRoot, Tag},
     scanner,
     state::AppState,
     watcher,
 };
 use chrono::Utc;
-use sqlx::{FromRow, QueryBuilder, Sqlite};
+use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool};
 use std::{collections::HashMap, path::{Path, PathBuf}};
 use tauri::{AppHandle, State};
 use uuid::Uuid;
@@ -21,8 +21,39 @@ struct TagLink {
     asset_count: i64,
 }
 
+const ASSET_ROW_SELECT: &str =
+    "SELECT a.id, a.source_id, a.path, a.filename, a.extension, a.media_kind, a.byte_size,
+     a.modified_at, a.captured_at, a.width, a.height, a.duration_ms, a.thumbnail_path,
+     a.preview_path, a.note, a.status FROM assets a";
+
 fn normalized(path: &Path) -> String {
     path.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase()
+}
+
+async fn hydrate_assets(db: &SqlitePool, rows: Vec<AssetRow>) -> AppResult<Vec<Asset>> {
+    let mut tag_map: HashMap<String, Vec<Tag>> = HashMap::new();
+    if !rows.is_empty() {
+        let mut tags_builder = QueryBuilder::<Sqlite>::new(
+            "SELECT at.asset_id, t.id, t.name, t.color, 0 asset_count FROM asset_tags at JOIN tags t ON t.id=at.tag_id WHERE at.asset_id IN ("
+        );
+        let mut separated = tags_builder.separated(",");
+        for row in &rows { separated.push_bind(&row.id); }
+        separated.push_unseparated(") ORDER BY t.name COLLATE NOCASE");
+        let links = tags_builder.build_query_as::<TagLink>().fetch_all(db).await?;
+        for link in links {
+            tag_map.entry(link.asset_id).or_default().push(Tag { id: link.id, name: link.name, color: link.color, asset_count: link.asset_count });
+        }
+    }
+    Ok(rows.into_iter().map(|row| {
+        let tags = tag_map.remove(&row.id).unwrap_or_default();
+        Asset { row, tags }
+    }).collect())
+}
+
+async fn home_assets(db: &SqlitePool, suffix: &str) -> AppResult<Vec<Asset>> {
+    let sql = format!("{ASSET_ROW_SELECT} WHERE a.status='ready' {suffix} LIMIT 8");
+    let rows = sqlx::query_as::<_, AssetRow>(&sql).fetch_all(db).await?;
+    hydrate_assets(db, rows).await
 }
 
 #[tauri::command]
@@ -38,7 +69,7 @@ pub async fn get_bootstrap(state: State<'_, AppState>) -> AppResult<LibraryBoots
          LEFT JOIN asset_tags at ON at.tag_id=t.id GROUP BY t.id ORDER BY t.name COLLATE NOCASE"
     ).fetch_all(&db).await?;
     let collections = sqlx::query_as::<_, Collection>(
-        "SELECT c.id, c.name, COUNT(ci.asset_id) asset_count FROM collections c
+        "SELECT c.id, c.name, COUNT(ci.asset_id) asset_count, c.cover_asset_id FROM collections c
          LEFT JOIN collection_items ci ON ci.collection_id=c.id GROUP BY c.id ORDER BY c.name COLLATE NOCASE"
     ).fetch_all(&db).await?;
     let (total_assets, image_count, video_count) = sqlx::query_as::<_, (i64, i64, i64)>(
@@ -46,6 +77,53 @@ pub async fn get_bootstrap(state: State<'_, AppState>) -> AppResult<LibraryBoots
          SUM(CASE WHEN media_kind='video' THEN 1 ELSE 0 END) FROM assets WHERE status='ready'"
     ).fetch_one(&db).await?;
     Ok(LibraryBootstrap { sources, tags, collections, total_assets, image_count, video_count })
+}
+
+#[tauri::command]
+pub async fn get_home_snapshot(state: State<'_, AppState>) -> AppResult<HomeSnapshot> {
+    let db = state.db().await;
+    let collections = sqlx::query_as::<_, Collection>(
+        "SELECT c.id, c.name, COUNT(ci.asset_id) asset_count, c.cover_asset_id FROM collections c
+         LEFT JOIN collection_items ci ON ci.collection_id=c.id GROUP BY c.id ORDER BY c.updated_at DESC, c.id ASC LIMIT 6"
+    ).fetch_all(&db).await?;
+    let mut cards = Vec::with_capacity(collections.len());
+    for collection in collections {
+        let custom_id = if let Some(asset_id) = &collection.cover_asset_id {
+            sqlx::query_scalar::<_, String>(
+                "SELECT a.id FROM collection_items ci JOIN assets a ON a.id=ci.asset_id
+                 WHERE ci.collection_id=? AND ci.asset_id=? AND a.status='ready' LIMIT 1"
+            ).bind(&collection.id).bind(asset_id).fetch_optional(&db).await?
+        } else { None };
+        let cover_id = match &custom_id {
+            Some(id) => Some(id.clone()),
+            None => sqlx::query_scalar::<_, String>(
+                "SELECT a.id FROM collection_items ci JOIN assets a ON a.id=ci.asset_id
+                 WHERE ci.collection_id=? AND a.status='ready'
+                 ORDER BY ci.position ASC, ci.created_at ASC, ci.asset_id ASC LIMIT 1"
+            ).bind(&collection.id).fetch_optional(&db).await?,
+        };
+        let cover_asset = if let Some(id) = cover_id {
+            let sql = format!("{ASSET_ROW_SELECT} WHERE a.id=? AND a.status='ready'");
+            let row = sqlx::query_as::<_, AssetRow>(&sql).bind(id).fetch_optional(&db).await?;
+            match row {
+                Some(row) => hydrate_assets(&db, vec![row]).await?.pop(),
+                None => None,
+            }
+        } else { None };
+        cards.push(CollectionHomeCard {
+            id: collection.id,
+            name: collection.name,
+            asset_count: collection.asset_count,
+            cover_asset,
+            has_custom_cover: custom_id.is_some(),
+        });
+    }
+    let (recent_viewed, recent_imported, recent_modified) = tokio::try_join!(
+        home_assets(&db, "AND a.last_viewed_at IS NOT NULL ORDER BY a.last_viewed_at DESC, a.id DESC"),
+        home_assets(&db, "ORDER BY a.created_at DESC, a.id DESC"),
+        home_assets(&db, "ORDER BY a.modified_at DESC, a.id DESC"),
+    )?;
+    Ok(HomeSnapshot { collections: cards, recent_viewed, recent_imported, recent_modified })
 }
 
 fn bind_filters<'a>(builder: &mut QueryBuilder<'a, Sqlite>, query: &'a AssetQuery) {
@@ -81,11 +159,7 @@ pub async fn list_assets(query: AssetQuery, state: State<'_, AppState>) -> AppRe
     bind_filters(&mut count_builder, &query);
     let total: i64 = count_builder.build_query_scalar().fetch_one(&db).await?;
 
-    let mut builder = QueryBuilder::<Sqlite>::new(
-        "SELECT a.id, a.source_id, a.path, a.filename, a.extension, a.media_kind, a.byte_size,
-         a.modified_at, a.captured_at, a.width, a.height, a.duration_ms, a.thumbnail_path,
-         a.preview_path, a.note, a.status FROM assets a"
-    );
+    let mut builder = QueryBuilder::<Sqlite>::new(ASSET_ROW_SELECT);
     bind_filters(&mut builder, &query);
     let order = match query.sort.as_deref() {
         Some("name") => "a.filename COLLATE NOCASE ASC, a.id ASC",
@@ -95,23 +169,7 @@ pub async fn list_assets(query: AssetQuery, state: State<'_, AppState>) -> AppRe
     };
     builder.push(" ORDER BY ").push(order).push(" LIMIT ").push_bind(limit).push(" OFFSET ").push_bind(offset);
     let rows = builder.build_query_as::<AssetRow>().fetch_all(&db).await?;
-    let mut tag_map: HashMap<String, Vec<Tag>> = HashMap::new();
-    if !rows.is_empty() {
-        let mut tags_builder = QueryBuilder::<Sqlite>::new(
-            "SELECT at.asset_id, t.id, t.name, t.color, 0 asset_count FROM asset_tags at JOIN tags t ON t.id=at.tag_id WHERE at.asset_id IN ("
-        );
-        let mut separated = tags_builder.separated(",");
-        for row in &rows { separated.push_bind(&row.id); }
-        separated.push_unseparated(") ORDER BY t.name COLLATE NOCASE");
-        let links = tags_builder.build_query_as::<TagLink>().fetch_all(&db).await?;
-        for link in links {
-            tag_map.entry(link.asset_id).or_default().push(Tag { id: link.id, name: link.name, color: link.color, asset_count: link.asset_count });
-        }
-    }
-    let items = rows.into_iter().map(|row| {
-        let tags = tag_map.remove(&row.id).unwrap_or_default();
-        Asset { row, tags }
-    }).collect();
+    let items = hydrate_assets(&db, rows).await?;
     let next = (offset + limit < total).then(|| (offset + limit).to_string());
     Ok(AssetPage { items, next_cursor: next, total })
 }
@@ -256,16 +314,50 @@ pub async fn delete_collection(id: String, state: State<'_, AppState>) -> AppRes
 pub async fn set_collection_assets(collection_id: String, asset_ids: Vec<String>, attached: bool, state: State<'_, AppState>) -> AppResult<()> {
     let db = state.db().await;
     let mut transaction = db.begin().await?;
+    let now = Utc::now().to_rfc3339();
     for asset_id in asset_ids {
         if attached {
-            sqlx::query("INSERT OR IGNORE INTO collection_items(collection_id, asset_id, created_at) VALUES(?, ?, ?)")
-                .bind(&collection_id).bind(asset_id).bind(Utc::now().to_rfc3339()).execute(&mut *transaction).await?;
+            let position = sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(position), -1) + 1 FROM collection_items WHERE collection_id=?")
+                .bind(&collection_id).fetch_one(&mut *transaction).await?;
+            sqlx::query("INSERT OR IGNORE INTO collection_items(collection_id, asset_id, position, created_at) VALUES(?, ?, ?, ?)")
+                .bind(&collection_id).bind(asset_id).bind(position).bind(&now).execute(&mut *transaction).await?;
         } else {
             sqlx::query("DELETE FROM collection_items WHERE collection_id=? AND asset_id=?")
+                .bind(&collection_id).bind(&asset_id).execute(&mut *transaction).await?;
+            sqlx::query("UPDATE collections SET cover_asset_id=NULL WHERE id=? AND cover_asset_id=?")
                 .bind(&collection_id).bind(asset_id).execute(&mut *transaction).await?;
         }
     }
+    sqlx::query("UPDATE collections SET updated_at=? WHERE id=?")
+        .bind(&now).bind(&collection_id).execute(&mut *transaction).await?;
     transaction.commit().await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_collection_cover(collection_id: String, asset_id: String, state: State<'_, AppState>) -> AppResult<()> {
+    let db = state.db().await;
+    let member = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM collection_items ci JOIN assets a ON a.id=ci.asset_id
+         WHERE ci.collection_id=? AND ci.asset_id=? AND a.status='ready'"
+    ).bind(&collection_id).bind(&asset_id).fetch_one(&db).await?;
+    if member == 0 { return Err("Collection covers must be selected from the collection".into()); }
+    sqlx::query("UPDATE collections SET cover_asset_id=?, updated_at=? WHERE id=?")
+        .bind(asset_id).bind(Utc::now().to_rfc3339()).bind(collection_id).execute(&db).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn clear_collection_cover(collection_id: String, state: State<'_, AppState>) -> AppResult<()> {
+    sqlx::query("UPDATE collections SET cover_asset_id=NULL, updated_at=? WHERE id=?")
+        .bind(Utc::now().to_rfc3339()).bind(collection_id).execute(&state.db().await).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn record_asset_viewed(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    sqlx::query("UPDATE assets SET last_viewed_at=? WHERE id=? AND status='ready'")
+        .bind(Utc::now().to_rfc3339()).bind(id).execute(&state.db().await).await?;
     Ok(())
 }
 
@@ -351,8 +443,11 @@ pub async fn trash_assets(ids: Vec<String>, state: State<'_, AppState>) -> AppRe
         let owned = PathBuf::from(path);
         tokio::task::spawn_blocking(move || trash::delete(owned)).await.map_err(|e| AppError::Message(e.to_string()))?
             .map_err(|e| AppError::Message(e.to_string()))?;
+        let updated_at = Utc::now().to_rfc3339();
         sqlx::query("UPDATE assets SET status='missing', updated_at=? WHERE id=?")
-            .bind(Utc::now().to_rfc3339()).bind(id).execute(&db).await?;
+            .bind(&updated_at).bind(&id).execute(&db).await?;
+        sqlx::query("UPDATE collections SET cover_asset_id=NULL, updated_at=? WHERE cover_asset_id=?")
+            .bind(updated_at).bind(id).execute(&db).await?;
     }
     Ok(())
 }

@@ -1,7 +1,7 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
-import { ChevronDown, Folder, FolderOpen, Image, Layers3, Library, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Tags, Trash2, Video } from "lucide-react";
+import { ChevronDown, Folder, FolderOpen, House, Image, Layers3, Library, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Tags, Trash2, Video } from "lucide-react";
 import { useRef } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -64,6 +64,7 @@ export function Sidebar(props: SidebarProps) {
   if (props.collapsed) return <LayoutGroup id="sidebar-navigation"><aside className="sidebar collapsed" aria-label={t("library")}>
     <div className="sidebarBrand compactBrand" data-tauri-drag-region onDoubleClick={(event) => { if (!isInteractiveWindowTarget(event.target)) void toggleCurrentWindowMaximize(); }}><Logo compact />{props.eventCue && <motion.span key={props.eventCue} className="sidebarBrandCue" initial={{ opacity: 0, scaleX: 0 }} animate={{ opacity: [0, 1, 0], scaleX: [0, 1, 0.45] }} transition={{ duration: 0.58 }} />}<button className="sidebarToggle tactile" aria-label={t("expandSidebar")} title={t("expandSidebar")} onClick={() => props.onCollapsedChange(false)}><PanelLeftOpen size={17} /></button></div>
     <nav className="railNav">
+      <RailButton label={t("home")} active={active("home")} onClick={() => props.onNavigate({ kind: "home" })}><House size={18} /></RailButton>
       <RailButton label={t("allItems")} active={active("all")} onClick={() => props.onNavigate({ kind: "all" })}><Library size={18} /></RailButton>
       <RailButton label={t("images")} active={active("media") && props.navigation.kind === "media" && props.navigation.mediaKind === "image"} onClick={() => props.onNavigate({ kind: "media", mediaKind: "image" })}><Image size={18} /></RailButton>
       <RailButton label={t("videos")} active={active("media") && props.navigation.kind === "media" && props.navigation.mediaKind === "video"} onClick={() => props.onNavigate({ kind: "media", mediaKind: "video" })}><Video size={18} /></RailButton>
@@ -86,6 +87,7 @@ export function Sidebar(props: SidebarProps) {
     <nav className="sidebarScroll" aria-label={t("library")}>
       <section className="navSection">
         <h2>{t("library")}</h2>
+        <button className={`navItem tactile ${active("home") ? "active" : ""}`} aria-current={active("home") ? "page" : undefined} onClick={() => props.onNavigate({ kind: "home" })}>{active("home") && <ActivePlate />}<House size={17} /><span>{t("home")}</span></button>
         <button className={`navItem tactile ${active("all") ? "active" : ""}`} aria-current={active("all") ? "page" : undefined} onClick={() => props.onNavigate({ kind: "all" })}>{active("all") && <ActivePlate />}<Library size={17} /><span>{t("allItems")}</span><b>{props.data?.totalAssets ?? 0}</b></button>
         <button className={`navItem tactile ${active("media") && props.navigation.kind === "media" && props.navigation.mediaKind === "image" ? "active" : ""}`} aria-current={props.navigation.kind === "media" && props.navigation.mediaKind === "image" ? "page" : undefined} onClick={() => props.onNavigate({ kind: "media", mediaKind: "image" })}>{props.navigation.kind === "media" && props.navigation.mediaKind === "image" && <ActivePlate />}<Image size={17} /><span>{t("images")}</span><b>{props.data?.imageCount ?? 0}</b></button>
         <button className={`navItem tactile ${active("media") && props.navigation.kind === "media" && props.navigation.mediaKind === "video" ? "active" : ""}`} aria-current={props.navigation.kind === "media" && props.navigation.mediaKind === "video" ? "page" : undefined} onClick={() => props.onNavigate({ kind: "media", mediaKind: "video" })}>{props.navigation.kind === "media" && props.navigation.mediaKind === "video" && <ActivePlate />}<Video size={17} /><span>{t("videos")}</span><b>{props.data?.videoCount ?? 0}</b></button>

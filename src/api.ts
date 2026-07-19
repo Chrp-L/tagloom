@@ -1,7 +1,7 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Asset, AssetPage, AssetQuery, JobProgress, LibraryBootstrap, Setting, Tag } from "./types";
+import type { Asset, AssetPage, AssetQuery, HomeSnapshot, JobProgress, LibraryBootstrap, Setting, Tag } from "./types";
 
 export const isTauri = "__TAURI_INTERNALS__" in window;
 
@@ -60,13 +60,22 @@ let demoAssets: Asset[] = Array.from({ length: 24 }, (_, index) => {
   };
 });
 
+const demoCollectionCovers: Record<string, string | undefined> = {};
+let demoRecentViewedIds: string[] = [];
+const demoCollectionMembers: Record<string, string[]> = {
+  "collection-summer": demoAssets.slice(0, 9).map((asset) => asset.id),
+  "collection-campaign": demoAssets.slice(5, 11).map((asset) => asset.id),
+};
+
 function filteredDemo(query: AssetQuery): AssetPage {
   let result = [...demoAssets];
   if (query.sourceId) result = result.filter((item) => item.sourceId === query.sourceId);
   if (query.mediaKind) result = result.filter((item) => item.mediaKind === query.mediaKind);
   if (query.tagId) result = result.filter((item) => item.tags.some((tag) => tag.id === query.tagId));
-  if (query.collectionId === "collection-summer") result = result.slice(0, 9);
-  if (query.collectionId === "collection-campaign") result = result.slice(5, 11);
+  if (query.collectionId) {
+    const memberIds = new Set(demoCollectionMembers[query.collectionId] ?? []);
+    result = result.filter((item) => memberIds.has(item.id));
+  }
   if (query.search) {
     const term = query.search.toLowerCase();
     result = result.filter((item) => `${item.filename} ${item.path} ${item.note} ${item.tags.map((tag) => tag.name).join(" ")}`.toLowerCase().includes(term));
@@ -83,6 +92,22 @@ async function command<T>(name: string, args?: Record<string, unknown>): Promise
 
 export const api = {
   getBootstrap: async (): Promise<LibraryBootstrap> => isTauri ? command("get_bootstrap") : structuredClone(demoBootstrap),
+  getHomeSnapshot: async (): Promise<HomeSnapshot> => {
+    if (isTauri) return command("get_home_snapshot");
+    const recent = (items: Asset[]) => items.slice(0, 8).map((asset) => structuredClone(asset));
+    const collectionAssets = (id: string) => filteredDemo({ collectionId: id, sort: "newest", limit: 120 }).items;
+    return {
+      collections: demoBootstrap.collections.slice(0, 6).map((collection) => {
+        const items = collectionAssets(collection.id);
+        const coverId = demoCollectionCovers[collection.id];
+        const coverAsset = items.find((asset) => asset.id === coverId) ?? items[0];
+        return { ...structuredClone(collection), coverAsset: coverAsset ? structuredClone(coverAsset) : undefined, hasCustomCover: Boolean(coverId && items.some((asset) => asset.id === coverId)) };
+      }),
+      recentViewed: recent(demoRecentViewedIds.map((id) => demoAssets.find((asset) => asset.id === id)).filter((asset): asset is Asset => Boolean(asset))),
+      recentImported: recent([...demoAssets].sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))),
+      recentModified: recent([...demoAssets].sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))),
+    };
+  },
   listAssets: async (query: AssetQuery): Promise<AssetPage> => isTauri ? command("list_assets", { query }) : filteredDemo(query),
   pickFolder: async (): Promise<string | null> => {
     if (!isTauri) return null;
@@ -115,10 +140,37 @@ export const api = {
     if (isTauri) return command("create_collection", { name });
     const id = `collection-${Date.now()}`;
     demoBootstrap.collections.push({ id, name, assetCount: 0 });
+    demoCollectionMembers[id] = [];
     return id;
   },
   deleteCollection: async (id: string): Promise<void> => command("delete_collection", { id }),
-  setCollectionAssets: async (collectionId: string, assetIds: string[], attached: boolean): Promise<void> => command("set_collection_assets", { collectionId, assetIds, attached }),
+  setCollectionAssets: async (collectionId: string, assetIds: string[], attached: boolean): Promise<void> => {
+    if (isTauri) return command("set_collection_assets", { collectionId, assetIds, attached });
+    const current = demoCollectionMembers[collectionId] ?? [];
+    demoCollectionMembers[collectionId] = attached ? [...current, ...assetIds.filter((id) => !current.includes(id))] : current.filter((id) => !assetIds.includes(id));
+    const collection = demoBootstrap.collections.find((item) => item.id === collectionId);
+    if (collection) collection.assetCount = demoCollectionMembers[collectionId].length;
+    if (!attached && demoCollectionCovers[collectionId] && assetIds.includes(demoCollectionCovers[collectionId]!)) {
+      delete demoCollectionCovers[collectionId];
+      if (collection) collection.coverAssetId = undefined;
+    }
+  },
+  setCollectionCover: async (collectionId: string, assetId: string): Promise<void> => {
+    if (isTauri) return command("set_collection_cover", { collectionId, assetId });
+    demoCollectionCovers[collectionId] = assetId;
+    const collection = demoBootstrap.collections.find((item) => item.id === collectionId);
+    if (collection) collection.coverAssetId = assetId;
+  },
+  clearCollectionCover: async (collectionId: string): Promise<void> => {
+    if (isTauri) return command("clear_collection_cover", { collectionId });
+    delete demoCollectionCovers[collectionId];
+    const collection = demoBootstrap.collections.find((item) => item.id === collectionId);
+    if (collection) collection.coverAssetId = undefined;
+  },
+  recordAssetViewed: async (id: string): Promise<void> => {
+    if (isTauri) return command("record_asset_viewed", { id });
+    demoRecentViewedIds = [id, ...demoRecentViewedIds.filter((value) => value !== id)].slice(0, 24);
+  },
   updateAssetNote: async (id: string, note: string): Promise<void> => {
     if (isTauri) return command("update_asset_note", { id, note });
     demoAssets = demoAssets.map((asset) => asset.id === id ? { ...asset, note } : asset);

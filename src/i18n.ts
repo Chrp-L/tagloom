@@ -4,6 +4,23 @@ import { initReactI18next } from "react-i18next";
 const zh = {
   translation: {
     library: "资料库",
+    home: "首页",
+    homeLoom: "素材织机",
+    loomPaused: "扫描已暂停",
+    loomError: "扫描出现问题",
+    myCollections: "我的相册组",
+    viewAll: "查看全部",
+    recentAssets: "最近素材",
+    recentViewed: "最近查看",
+    recentImported: "最近导入",
+    recentModified: "最近修改",
+    noRecentViewed: "预览过的素材会出现在这里。",
+    libraryOverview: "素材库概览",
+    indexStatus: "索引状态",
+    indexReady: "已更新",
+    recentActivity: "最近活动",
+    setCollectionCover: "设为当前分组封面",
+    clearCollectionCover: "取消自定义封面",
     allItems: "全部素材",
     images: "图片",
     videos: "视频",
@@ -119,7 +136,10 @@ const zh = {
 
 const en = {
   translation: {
-    library: "Library", allItems: "All items", images: "Images", videos: "Videos",
+    library: "Library", home: "Home", homeLoom: "Media loom", loomPaused: "Scan paused", loomError: "Scan needs attention", myCollections: "My albums", viewAll: "View all",
+    recentAssets: "Recent assets", recentViewed: "Recently viewed", recentImported: "Recently imported", recentModified: "Recently modified",
+    noRecentViewed: "Assets you preview will appear here.", libraryOverview: "Library overview", indexStatus: "Index status", indexReady: "Up to date", recentActivity: "Recent activity",
+    setCollectionCover: "Set as current album cover", clearCollectionCover: "Use automatic cover", allItems: "All items", images: "Images", videos: "Videos",
     folders: "Folders", collections: "Collections", tags: "Tags", addFolder: "Add folder",
     newCollection: "New collection", newTag: "New tag", search: "Search names, tags, paths or notes",
     newest: "Newest first", oldest: "Oldest first", filename: "By name", largest: "Largest first",

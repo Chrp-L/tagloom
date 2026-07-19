@@ -3,7 +3,7 @@ import { parseSidebarPreferences, useUiStore } from "./store";
 
 beforeEach(() => {
   useUiStore.setState({
-    navigation: { kind: "all" },
+    navigation: { kind: "home" },
     selectionMode: "browse",
     focusedAssetId: undefined,
     checkedIds: [],

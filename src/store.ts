@@ -14,6 +14,7 @@ import {
 import type { SelectionMode } from "./features/selection/selectionModel";
 
 export type NavigationFilter =
+  | { kind: "home" }
   | { kind: "all" }
   | { kind: "media"; mediaKind: MediaKind }
   | { kind: "source"; id: string }
@@ -83,7 +84,7 @@ localStorage.removeItem("tagloom-reduce-motion");
 const sidebarPreferences = parseSidebarPreferences(localStorage.getItem(SIDEBAR_PREFERENCES_KEY));
 
 export const useUiStore = create<UiState>((set) => ({
-  navigation: { kind: "all" },
+  navigation: { kind: "home" },
   ...resetAssetContextState(),
   view: "grid",
   gridColumns: 4,

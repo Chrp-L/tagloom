@@ -300,6 +300,8 @@ describe("asset browser stable rendering", () => {
     onRename: vi.fn(),
     onMove: vi.fn(),
     onTrash: vi.fn(),
+    onSetCollectionCover: vi.fn(),
+    onClearCollectionCover: vi.fn(),
     onAddSource: vi.fn(),
   };
 
@@ -355,6 +357,18 @@ describe("asset browser stable rendering", () => {
     render(<AssetBrowser {...browserProps} selectionMode="batch" />);
     await waitFor(() => expect(document.querySelector("[data-selection-control]")).not.toBeNull());
     expect(document.querySelector("[data-selection-control]")).toHaveStyle({ zIndex: "3" });
+  });
+
+  it("offers the current collection cover action only in browse mode", async () => {
+    const onSetCollectionCover = vi.fn();
+    const view = render(<AssetBrowser {...browserProps} collectionContext={{ id: "collection-a" }} onSetCollectionCover={onSetCollectionCover} />);
+    await waitFor(() => expect(document.querySelectorAll("[data-asset-id]")).toHaveLength(4));
+    fireEvent.contextMenu(document.querySelector<HTMLElement>('[data-asset-id="a"]')!, { button: 2, clientX: 30, clientY: 30 });
+    await waitFor(() => expect(screen.getByRole("menu")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("menuitem", { name: /setCollectionCover|设为当前分组封面/ }));
+    expect(onSetCollectionCover).toHaveBeenCalledWith("collection-a", "a");
+    view.rerender(<AssetBrowser {...browserProps} collectionContext={{ id: "collection-a" }} selectionMode="batch" onSetCollectionCover={onSetCollectionCover} />);
+    expect(document.querySelector(".assetContextMenu")).toBeNull();
   });
 
   it("keeps tag count and colors when tags are presented as cable strands", async () => {
