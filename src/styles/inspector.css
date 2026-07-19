@@ -43,4 +43,3 @@
 .menuItem[data-disabled] { opacity: .42; pointer-events: none; }
 .menuHint { margin-left: auto; color: var(--text-faint); font-size: 9px; }
 .menuItem[data-highlighted] { background: var(--surface-soft); color: var(--text); }.menuItem.danger[data-highlighted] { color: var(--danger); }.menuSeparator { height: 1px; margin: 4px; background: var(--line); }.menuIconSpace { width: 15px; }
-

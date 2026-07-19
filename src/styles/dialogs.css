@@ -63,4 +63,3 @@
 .windowChrome button { width: 42px; height: 34px; display: grid; place-items: center; background: transparent; color: var(--text-soft); transition: background var(--fast), color var(--fast); }
 .windowChrome button:hover { background: color-mix(in srgb, var(--surface-soft) 86%, transparent); color: var(--text); }
 .windowChrome .windowClose:hover { background: #c42b1c; color: #fff; }
-

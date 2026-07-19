@@ -1,16 +1,16 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AnimatePresence, motion, useAnimationControls } from "motion/react";
-import { Check, Film, ImageOff, Play } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { motion, useAnimationControls } from "motion/react";
+import { ImageOff } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { mediaUrl } from "../api";
-import { formatBytes, formatDate, formatDuration } from "../lib/format";
 import type { Asset } from "../types";
 import type { GridColumns } from "../store";
 import { attachAssetInteraction } from "../lib/assetSelection";
 import { attachModifierKeyTracking, createModifierKeyState, isRangePressed } from "../lib/modifierKeys";
 import type { SelectionMode } from "../features/selection/selectionModel";
-import { AssetContextMenu } from "./AssetContextMenu";
+import type { AssetActions } from "./assets/AssetActions";
+import { AssetGridItem } from "./assets/AssetGridItem";
+import { AssetListRow } from "./assets/AssetListRow";
 
 interface Props {
   assets: Asset[];
@@ -41,11 +41,6 @@ interface Props {
   onSetCollectionCover?: (collectionId: string, assetId: string) => void;
   onClearCollectionCover?: (collectionId: string) => void;
   onAddSource: () => void;
-}
-
-function ThumbnailImage({ src, draggable = true }: { src: string; draggable?: boolean }) {
-  const [loaded, setLoaded] = useState(false);
-  return <span className={`thumbnailLoader ${loaded ? "loaded" : ""}`}><img src={src} alt="" draggable={draggable} loading="lazy" decoding="async" onLoad={() => setLoaded(true)} /></span>;
 }
 
 function useElementWidth(ref: React.RefObject<HTMLElement | null>) {
@@ -112,7 +107,7 @@ export function AssetBrowser(props: Props) {
       else onToggleCheckedRef.current(assetId);
     });
   }, [props.assets.length, props.selectionMode, props.view]);
-  const handleAssetKeyDown = (event: React.KeyboardEvent<HTMLElement>, asset: Asset) => {
+  const handleAssetKeyDown = useCallback((event: KeyboardEvent<HTMLElement>, asset: Asset) => {
     if (props.selectionMode === "browse") {
       if (event.key === "Enter") props.onPreview(asset);
       return;
@@ -121,14 +116,39 @@ export function AssetBrowser(props: Props) {
     event.preventDefault();
     if (event.shiftKey || isRangePressed(modifiersRef.current)) props.onCheckRange(asset.id);
     else props.onToggleChecked(asset.id);
-  };
-  const handleControlKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, assetId: string) => {
+  }, [props.onCheckRange, props.onPreview, props.onToggleChecked, props.selectionMode]);
+  const handleControlKeyDown = useCallback((event: KeyboardEvent<HTMLButtonElement>, assetId: string) => {
     event.stopPropagation();
     if (event.key !== " " && event.key !== "Spacebar") return;
     event.preventDefault();
     if (event.shiftKey || isRangePressed(modifiersRef.current)) props.onCheckRange(assetId);
     else props.onToggleChecked(assetId);
-  };
+  }, [props.onCheckRange, props.onToggleChecked]);
+  const actions = useMemo<AssetActions>(() => ({
+    focus: props.onFocus,
+    toggleChecked: props.onToggleChecked,
+    checkRange: props.onCheckRange,
+    preview: props.onPreview,
+    open: props.onOpen,
+    reveal: props.onReveal,
+    rename: props.onRename,
+    move: props.onMove,
+    trash: props.onTrash,
+    setCollectionCover: props.onSetCollectionCover,
+    clearCollectionCover: props.onClearCollectionCover,
+  }), [
+    props.onCheckRange,
+    props.onClearCollectionCover,
+    props.onFocus,
+    props.onMove,
+    props.onOpen,
+    props.onPreview,
+    props.onRename,
+    props.onReveal,
+    props.onSetCollectionCover,
+    props.onToggleChecked,
+    props.onTrash,
+  ]);
   if (props.noSources) return (
     <div className="emptyState">
       <div className="emptyWeave" aria-hidden="true"><i /><i /><i /><span /></div>
@@ -147,27 +167,34 @@ export function AssetBrowser(props: Props) {
           const rowAssets = props.assets.slice(virtualRow.index * columns, virtualRow.index * columns + columns);
           return <div key={virtualRow.key} className={props.view === "grid" ? "virtualGridRow" : "virtualListRow"} style={{ transform: `translateY(${virtualRow.start}px)`, height: rowHeight, gridTemplateColumns: props.view === "grid" ? `repeat(${columns}, minmax(0, 1fr))` : undefined }}>
             {rowAssets.map((asset) => props.view === "grid" ? (
-              <AssetContextMenu key={asset.id} asset={asset} selectionMode={props.selectionMode} checkedIds={props.checkedIds} collectionContext={props.collectionContext} onFocus={props.onFocus} onPreview={props.onPreview} onOpen={props.onOpen} onReveal={props.onReveal} onRename={props.onRename} onMove={props.onMove} onTrash={props.onTrash} onSetCollectionCover={props.onSetCollectionCover} onClearCollectionCover={props.onClearCollectionCover}>
-              <article data-asset-id={asset.id} className={`assetTile ${props.selectionMode === "browse" && props.focusedAssetId === asset.id ? "focused" : ""} ${props.selectionMode === "batch" && checkedSet.has(asset.id) ? "checked" : ""} ${props.dropTargetAssetId === asset.id ? "dragTarget" : ""}`}
-                tabIndex={0} onDoubleClick={() => { if (props.selectionMode === "browse") props.onPreview(asset); }} onKeyDown={(event) => handleAssetKeyDown(event, asset)}>
-                <div className="assetThumb" style={{ aspectRatio: "4 / 3" }}>
-                  {asset.thumbnailPath ? <ThumbnailImage key={asset.thumbnailPath} src={mediaUrl(asset.thumbnailPath) || ""} draggable={false} /> : <div className="thumbFallback"><ImageOff size={22} /></div>}
-                  <AnimatePresence initial={false}>{props.selectionMode === "batch" && <motion.button key="batch-check" className="selectControl tactile" style={{ zIndex: 3 }} type="button" role="checkbox" aria-checked={checkedSet.has(asset.id)} data-selection-control aria-label={t("toggleSelection", { name: asset.filename })} initial={{ opacity: 0, scale: 0.82 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.86 }} transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }} onKeyDown={(event) => handleControlKeyDown(event, asset.id)} onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}><span><AnimatePresence initial={false}>{checkedSet.has(asset.id) && <motion.i key="checked" className="selectionCheckMark" initial={{ opacity: 0, scale: 0.55 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}><Check size={14} /></motion.i>}</AnimatePresence></span></motion.button>}</AnimatePresence>
-                  {asset.mediaKind === "video" && <span className="durationBadge"><Play size={10} fill="currentColor" />{formatDuration(asset.durationMs)}</span>}
-                  <AnimatePresence>{props.wovenAssetId === asset.id && <motion.span className="weaveTrace" initial={{ scaleX: 0, opacity: 1 }} animate={{ scaleX: 1, opacity: 1 }} exit={{ opacity: 0 }} />}</AnimatePresence>
-                </div>
-                <div className="assetCaption"><div><strong title={asset.filename}>{asset.filename}</strong><span>{formatDate(asset.capturedAt || asset.modifiedAt)}</span></div><div className="miniTags">{asset.tags.slice(0, 3).map((tag) => <i key={tag.id} style={{ background: tag.color }} title={tag.name} />)}</div></div>
-              </article>
-              </AssetContextMenu>
+              <AssetGridItem
+                key={asset.id}
+                asset={asset}
+                selectionMode={props.selectionMode}
+                focused={props.focusedAssetId === asset.id}
+                checked={checkedSet.has(asset.id)}
+                checkedIds={props.checkedIds}
+                dropTarget={props.dropTargetAssetId === asset.id}
+                woven={props.wovenAssetId === asset.id}
+                collectionContext={props.collectionContext}
+                actions={actions}
+                onAssetKeyDown={handleAssetKeyDown}
+                onControlKeyDown={handleControlKeyDown}
+              />
             ) : (
-              <AssetContextMenu key={asset.id} asset={asset} selectionMode={props.selectionMode} checkedIds={props.checkedIds} collectionContext={props.collectionContext} onFocus={props.onFocus} onPreview={props.onPreview} onOpen={props.onOpen} onReveal={props.onReveal} onRename={props.onRename} onMove={props.onMove} onTrash={props.onTrash} onSetCollectionCover={props.onSetCollectionCover} onClearCollectionCover={props.onClearCollectionCover}>
-              <div data-asset-id={asset.id} className={`assetListItem ${props.selectionMode === "browse" && props.focusedAssetId === asset.id ? "focused" : ""} ${props.selectionMode === "batch" && checkedSet.has(asset.id) ? "checked" : ""} ${props.dropTargetAssetId === asset.id ? "dragTarget" : ""}`} tabIndex={0} onDoubleClick={() => { if (props.selectionMode === "browse") props.onPreview(asset); }} onKeyDown={(event) => handleAssetKeyDown(event, asset)}>
-                <div className="listSelectionSlot">{props.selectionMode === "batch" && <motion.button key="batch-check" className="listCheck tactile" type="button" role="checkbox" aria-checked={checkedSet.has(asset.id)} data-selection-control aria-label={t("toggleSelection", { name: asset.filename })} initial={{ opacity: 0, scale: 0.82 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }} onKeyDown={(event) => handleControlKeyDown(event, asset.id)} onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}><AnimatePresence initial={false}>{checkedSet.has(asset.id) && <motion.i key="checked" className="selectionCheckMark" initial={{ opacity: 0, scale: 0.55 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}><Check size={13} /></motion.i>}</AnimatePresence></motion.button>}</div>
-                <div className="listThumb">{asset.thumbnailPath ? <ThumbnailImage key={asset.thumbnailPath} src={mediaUrl(asset.thumbnailPath) || ""} /> : <ImageOff size={17} />}{asset.mediaKind === "video" && <Film size={12} />}</div>
-                <strong title={asset.filename}>{asset.filename}</strong><span>{asset.mediaKind === "video" ? t("videos") : t("images")}</span><span>{formatBytes(asset.byteSize)}</span><span>{formatDate(asset.modifiedAt)}</span>
-                <div className="miniTags">{asset.tags.slice(0, 4).map((tag) => <i key={tag.id} style={{ background: tag.color }} title={tag.name} />)}</div>
-              </div>
-              </AssetContextMenu>
+              <AssetListRow
+                key={asset.id}
+                asset={asset}
+                selectionMode={props.selectionMode}
+                focused={props.focusedAssetId === asset.id}
+                checked={checkedSet.has(asset.id)}
+                checkedIds={props.checkedIds}
+                dropTarget={props.dropTargetAssetId === asset.id}
+                collectionContext={props.collectionContext}
+                actions={actions}
+                onAssetKeyDown={handleAssetKeyDown}
+                onControlKeyDown={handleControlKeyDown}
+              />
             ))}
             {rowAssets.length === 0 && props.loading && <div className="loadingRow"><span /><span /><span /></div>}
           </div>;
