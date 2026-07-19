@@ -1,0 +1,66 @@
+.dialogOverlay, .previewOverlay { position: fixed; inset: 0; z-index: 200; background: rgba(14, 18, 16, 0.46); animation: fadeIn var(--state); }
+.dialogContent { position: fixed; z-index: 201; top: 50%; left: 50%; width: min(560px, calc(100vw - 40px)); max-height: calc(100vh - 40px); overflow: auto; transform: translate(-50%, -50%); padding: 22px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-strong); box-shadow: var(--shadow); animation: dialogIn var(--layout); }
+.smallDialog { width: 420px; }.settingsDialog { width: 600px; }
+.dialogContent > h2 { margin: 0 28px 7px 0; font-size: 17px; font-weight: 600; }.dialogContent > p { margin: 0; color: var(--text-soft); font-size: 11px; line-height: 1.6; }
+.dialogClose { position: absolute; top: 14px; right: 14px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 4px; background: transparent; color: var(--text-faint); }.dialogClose:hover { background: var(--surface-soft); color: var(--text); }
+.formField { display: flex; flex-direction: column; gap: 6px; margin-top: 18px; color: var(--text-soft); font-size: 10px; }
+.formField input { height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 5px; outline: 0; background: var(--bg); font-size: 12px; }.formField input:focus { border-color: var(--accent); }
+.colorField { display: flex; gap: 9px; margin: 14px 0 0; padding: 0; border: 0; }.colorField legend { margin-bottom: 8px; color: var(--text-soft); font-size: 10px; }.colorField button { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; color: #fff; }.colorField button.active { outline: 2px solid var(--text); outline-offset: 2px; }
+.dialogActions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 20px; }
+.settingsSection { padding: 16px 0; border-bottom: 1px solid var(--line); }.settingsSection:last-of-type { border-bottom: 0; }
+.settingsSection h3 { margin-bottom: 7px; }
+.settingRow { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }.settingRow > span { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.textSegment button { min-width: 58px; height: 27px; padding: 0 8px; font-size: 10px; white-space: nowrap; }
+.settingsButtons { display: flex; gap: 8px; }.settingsButtons button { min-height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--text-soft); font-size: 10px; }.settingsButtons button:hover { border-color: var(--line-strong); color: var(--text); }
+
+.previewOverlay { background: rgba(12, 14, 13, 0.9); animation: none; }
+.previewOverlay[data-state="open"] { animation: previewFadeIn 160ms ease-out both; }
+.previewOverlay[data-state="closed"] { animation: previewFadeOut 140ms ease-in both; }
+.previewContent { position: fixed; inset: 0; z-index: 201; display: grid; grid-template-rows: 52px minmax(0, 1fr); background: #0c0e0d; color: #f2f4f2; }
+.previewContent[data-state="open"] { animation: previewContentIn 180ms cubic-bezier(.22,1,.36,1) both; }
+.previewContent[data-state="closed"] { animation: previewContentOut 140ms ease-in both; }
+.previewTitle { margin: 0; align-self: center; justify-self: center; max-width: calc(100vw - 160px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.previewMediaLayout { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 54px; }
+.videoMediaLayout { grid-template-rows: minmax(0, 1fr) 78px; }
+.previewStage { min-width: 0; min-height: 0; display: grid; place-items: center; padding: 5px 50px; }
+.previewStage img { max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: 0 18px 70px rgba(0,0,0,.35); }
+.videoStage { position: relative; overflow: hidden; padding-bottom: 10px; cursor: default; }
+.videoStage video, .videoStage .videoPoster { width: 100%; height: 100%; display: block; object-fit: contain; box-shadow: 0 18px 70px rgba(0,0,0,.35); }
+.videoPosterFallback { width: min(65vw, 900px); aspect-ratio: 16 / 9; background: #171a18; }
+.videoCenterPlay { position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; display: grid; place-items: center; transform: translate(-50%, -50%); border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(12,14,13,.72); box-shadow: 0 10px 34px rgba(0,0,0,.32), inset 0 0 0 1px rgba(255,255,255,.05); color: #fff; backdrop-filter: blur(8px); }
+.videoCenterPlay:hover { background: rgba(237,103,88,.88); }.videoCenterPlay:active { transform: translate(-50%, calc(-50% + 1px)) scale(.975); }
+.videoCenterState { position: absolute; left: 50%; top: 50%; display: flex; flex-direction: column; align-items: center; gap: 10px; transform: translate(-50%, -50%); color: rgba(255,255,255,.82); font-size: 11px; }
+.videoError { position: absolute; left: 50%; bottom: 22px; display: flex; align-items: center; gap: 10px; transform: translateX(-50%); padding: 8px 10px; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; background: rgba(12,14,13,.86); font-size: 11px; }
+.videoError button { padding: 5px 8px; border-radius: 4px; background: rgba(255,255,255,.1); color: #fff; }
+.previewNav { position: fixed; z-index: 2; top: 50%; width: 46px; height: 64px; display: grid; place-items: center; transform: translateY(-50%); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; background: rgba(255,255,255,.1); color: #fff; transition: background var(--fast), opacity var(--fast); }
+.previewNav:hover:not(:disabled) { background: rgba(255,255,255,.2); }.previewNav:disabled { opacity: .22; }.previewNav.previous { left: 18px; }.previewNav.next { right: 18px; }
+.previewControls { align-self: center; justify-self: center; display: flex; align-items: center; gap: 6px; }
+.previewControls button { height: 32px; min-width: 32px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 7px; border-radius: 4px; background: rgba(255,255,255,.08); color: #f2f4f2; }.previewControls button:hover { background: rgba(255,255,255,.15); }.previewControls span { width: 60px; text-align: center; font-size: 10px; color: rgba(255,255,255,.62); }.previewControls .previewExternal { margin-left: 12px; }
+.previewExternal { height: 32px; min-width: 32px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 10px; border-radius: 4px; background: rgba(255,255,255,.08); color: #f2f4f2; font-size: 10px; white-space: nowrap; }.previewExternal:hover { background: rgba(255,255,255,.15); }
+.previewClose { position: fixed; top: 13px; right: 15px; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 4px; background: rgba(255,255,255,.08); color: #fff; }.previewClose:hover { background: rgba(255,255,255,.15); }
+.videoControlBar { min-width: 0; padding: 9px 18px 8px; border-top: 1px solid rgba(255,255,255,.1); background: #111412; }
+.videoControlRow { height: 39px; display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 14px; }
+.videoControlGroup { min-width: 0; display: flex; align-items: center; gap: 7px; }.endControls { justify-content: flex-end; }
+.previewIconControl { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 4px; background: transparent; color: rgba(255,255,255,.78); }.previewIconControl:hover { background: rgba(255,255,255,.1); color: #fff; }
+.videoTime { width: 86px; flex: 0 0 auto; color: rgba(255,255,255,.62); font-size: 10px; font-variant-numeric: tabular-nums; }
+.previewCount { color: rgba(255,255,255,.56); font-size: 10px; font-variant-numeric: tabular-nums; }
+.mediaRange { height: 14px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
+.mediaRange:disabled { cursor: default; opacity: .38; }
+.mediaRange::-webkit-slider-runnable-track { height: 3px; border-radius: 3px; background: linear-gradient(to right, var(--accent) 0 var(--range-progress), rgba(255,255,255,.18) var(--range-progress) 100%); }
+.mediaRange::-webkit-slider-thumb { width: 11px; height: 11px; margin-top: -4px; appearance: none; border: 2px solid #fff; border-radius: 50%; background: var(--accent); box-shadow: 0 1px 5px rgba(0,0,0,.4); transition: transform var(--fast); }
+.mediaRange:active::-webkit-slider-thumb { transform: scale(1.28); }
+.progressRange { width: 100%; display: block; }.volumeRange { width: 74px; }
+
+.toastRegion { position: fixed; z-index: 300; right: 18px; bottom: 18px; display: flex; flex-direction: column; align-items: flex-end; gap: 7px; pointer-events: none; }
+.toast { max-width: 340px; min-height: 39px; display: flex; align-items: center; gap: 9px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-strong); box-shadow: var(--shadow); color: var(--text); font-size: 11px; }.toast.success span { color: var(--green); }.toast.error span { color: var(--danger); }
+.tagDragLayer { position: fixed; inset: 0; z-index: 350; pointer-events: none; }
+.tagDragThread { position: fixed; height: 2px; transform-origin: left center; border-radius: 2px; background: color-mix(in srgb, var(--accent) 76%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 13%, transparent); }
+.tagDragThread.dropping { transform-origin: right center; }
+.tagDragPill { position: fixed; left: 0; top: 0; max-width: 180px; height: 30px; display: flex; align-items: center; gap: 7px; padding: 0 10px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 5px; background: var(--surface-strong); box-shadow: var(--shadow); color: var(--text); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.tagDragPill i { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; }.tagDragging, .tagDragging * { cursor: grabbing !important; user-select: none !important; }
+
+.windowChrome { position: fixed; z-index: 190; top: 0; right: 0; height: 34px; display: flex; align-items: stretch; }
+.windowChrome button { width: 42px; height: 34px; display: grid; place-items: center; background: transparent; color: var(--text-soft); transition: background var(--fast), color var(--fast); }
+.windowChrome button:hover { background: color-mix(in srgb, var(--surface-soft) 86%, transparent); color: var(--text); }
+.windowChrome .windowClose:hover { background: #c42b1c; color: #fff; }
+
