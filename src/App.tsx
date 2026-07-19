@@ -86,7 +86,7 @@ export default function App() {
   const focusedAsset = useMemo(() => assets.find((asset) => asset.id === ui.focusedAssetId) ?? (ui.focusedAssetId ? homeAssetMap.get(ui.focusedAssetId) : undefined), [assets, homeAssetMap, ui.focusedAssetId]);
   const collectionNavigationId = ui.navigation.kind === "collection" ? ui.navigation.id : undefined;
   const activeCollection = useMemo(() => collectionNavigationId ? bootstrap.data?.collections.find((collection) => collection.id === collectionNavigationId) : undefined, [bootstrap.data?.collections, collectionNavigationId]);
-  const inspectorTargetIds = useMemo(() => getAssetActionTargets(ui), [ui.checkedIds, ui.focusedAssetId]);
+  const inspectorTargetIds = useMemo(() => getAssetActionTargets(ui), [ui.checkedIds, ui.focusedAssetId, ui.selectionMode]);
   const browserMotionKey = useMemo(() => JSON.stringify([ui.navigation, deferredSearch, sort, ui.view, ui.gridColumns]), [deferredSearch, sort, ui.gridColumns, ui.navigation, ui.view]);
   const requestTrash = useCallback((ids: string[]) => {
     if (ids.length > 0) setTrashTargetIds([...ids]);
