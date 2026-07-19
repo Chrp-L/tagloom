@@ -25,10 +25,14 @@ pub fn run() {
             let state = app.state::<AppState>();
             let db = tauri::async_runtime::block_on(state.db());
             let sources = tauri::async_runtime::block_on(
-                sqlx::query_as::<_, (String, String)>("SELECT id, path FROM source_roots").fetch_all(&db)
-            ).unwrap_or_default();
+                sqlx::query_as::<_, (String, String)>("SELECT id, path FROM source_roots")
+                    .fetch_all(&db),
+            )
+            .unwrap_or_default();
             for (id, path) in sources {
-                if let Err(error) = watcher::attach(handle.clone(), &state, id, std::path::Path::new(&path)) {
+                if let Err(error) =
+                    watcher::attach(handle.clone(), &state, id, std::path::Path::new(&path))
+                {
                     tracing::warn!(error = %error, "existing source watcher could not be started");
                 }
             }
