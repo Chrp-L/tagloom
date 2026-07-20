@@ -53,11 +53,6 @@
 
 .toastRegion { position: fixed; z-index: 300; right: 18px; bottom: 18px; display: flex; flex-direction: column; align-items: flex-end; gap: 7px; pointer-events: none; }
 .toast { max-width: 340px; min-height: 39px; display: flex; align-items: center; gap: 9px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-strong); box-shadow: var(--shadow); color: var(--text); font-size: 11px; }.toast.success span { color: var(--green); }.toast.error span { color: var(--danger); }
-.tagDragLayer { position: fixed; inset: 0; z-index: 350; pointer-events: none; }
-.tagDragThread { position: fixed; height: 2px; transform-origin: left center; border-radius: 2px; background: color-mix(in srgb, var(--accent) 76%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 13%, transparent); }
-.tagDragThread.dropping { transform-origin: right center; }
-.tagDragPill { position: fixed; left: 0; top: 0; max-width: 180px; height: 30px; display: flex; align-items: center; gap: 7px; padding: 0 10px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 5px; background: var(--surface-strong); box-shadow: var(--shadow); color: var(--text); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
-.tagDragPill i { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; }.tagDragging, .tagDragging * { cursor: grabbing !important; user-select: none !important; }
 
 .windowChrome { position: fixed; z-index: 190; top: 0; right: 0; height: 34px; display: flex; align-items: stretch; }
 .windowChrome button { width: 42px; height: 34px; display: grid; place-items: center; background: transparent; color: var(--text-soft); transition: background var(--fast), color var(--fast); }

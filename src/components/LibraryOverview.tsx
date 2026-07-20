@@ -29,9 +29,9 @@ export function LibraryOverview({ data, jobs = [], onAddSource, onOpenSource }: 
     return t("indexReady");
   };
 
-  return <aside className="inspector homeOverview">
+  return <aside className="inspector homeOverview" aria-labelledby="workspace-status-title">
     <motion.div className="inspectorContent" initial={{ opacity: 0, x: 4 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.16 }}>
-      <div className="inspectorHeader" data-tauri-drag-region onDoubleClick={(event) => { if (!isInteractiveWindowTarget(event.target)) void toggleCurrentWindowMaximize(); }}><h2 data-tauri-drag-region>{t("workspaceStatus")}</h2></div>
+      <div className="inspectorHeader" data-tauri-drag-region onDoubleClick={(event) => { if (!isInteractiveWindowTarget(event.target)) void toggleCurrentWindowMaximize(); }}><h2 id="workspace-status-title" data-tauri-drag-region>{t("workspaceStatus")}</h2></div>
 
       <section className={`inspectorSection overviewIndex ${activeJob?.status ?? (indexReady ? "ready" : "working")}`}>
         <h3>{t("indexStatus")}</h3>

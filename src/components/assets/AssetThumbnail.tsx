@@ -1,4 +1,3 @@
-import { AnimatePresence, motion } from "motion/react";
 import { Film, ImageOff, Play } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { mediaUrl } from "../../api";
@@ -24,11 +23,10 @@ function ThumbnailImage({ src, draggable = true }: { src: string; draggable?: bo
 interface Props {
   asset: Asset;
   variant: "grid" | "list";
-  woven?: boolean;
   children?: ReactNode;
 }
 
-export function AssetThumbnail({ asset, variant, woven = false, children }: Props) {
+export function AssetThumbnail({ asset, variant, children }: Props) {
   const thumbnail = asset.thumbnailPath ? mediaUrl(asset.thumbnailPath) || "" : undefined;
 
   if (variant === "list") {
@@ -51,16 +49,6 @@ export function AssetThumbnail({ asset, variant, woven = false, children }: Prop
       {asset.mediaKind === "video" && (
         <span className="durationBadge"><Play size={10} fill="currentColor" />{formatDuration(asset.durationMs)}</span>
       )}
-      <AnimatePresence>
-        {woven && (
-          <motion.span
-            className="weaveTrace"
-            initial={{ scaleX: 0, opacity: 1 }}
-            animate={{ scaleX: 1, opacity: 1 }}
-            exit={{ opacity: 0 }}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }

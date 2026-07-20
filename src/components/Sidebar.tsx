@@ -3,7 +3,7 @@ import * as Tooltip from "@radix-ui/react-tooltip";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { ChevronDown, Folder, FolderOpen, House, Image, Layers3, Library, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Tags, Trash2, Video } from "lucide-react";
 import { useRef } from "react";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Collection, LibraryBootstrap, SourceRoot, Tag } from "../types";
 import type { CollapsedSections, NavigationFilter, SidebarSection } from "../store";
@@ -27,8 +27,6 @@ interface SidebarProps {
   onRemoveSource: (source: SourceRoot) => void;
   onDeleteCollection: (collection: Collection) => void;
   onDeleteTag: (tag: Tag) => void;
-  onTagPointerDown: (tag: Tag, event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onTagActivate: (tagId: string) => void;
 }
 
 function RailButton({ label, active = false, children, onClick }: { label: string; active?: boolean; children: ReactNode; onClick: () => void }) {
@@ -105,7 +103,7 @@ export function Sidebar(props: SidebarProps) {
       <section ref={sectionRefs.tags} className="navSection tagsSection">
         {heading("tags", t("tags"), t("newTag"), props.onCreateTag)}
         {sectionBody("tags", <>{props.data?.tags.map((tag) => <div key={tag.id} className="navItemWrap">
-          <button className={`navItem tactile tagNav hasMenu ${active("tag", tag.id) ? "active" : ""}`} aria-current={active("tag", tag.id) ? "page" : undefined} onPointerDown={(event) => props.onTagPointerDown(tag, event)} onClick={() => props.onTagActivate(tag.id)}>{active("tag", tag.id) && <ActivePlate />}<span className="tagDot" style={{ background: tag.color }} /><span>{tag.name}</span><b>{tag.assetCount}</b></button>
+          <button className={`navItem tactile tagNav hasMenu ${active("tag", tag.id) ? "active" : ""}`} aria-current={active("tag", tag.id) ? "page" : undefined} onClick={() => props.onNavigate({ kind: "tag", id: tag.id })}>{active("tag", tag.id) && <ActivePlate />}<span className="tagDot" style={{ background: tag.color }} /><span>{tag.name}</span><b>{tag.assetCount}</b></button>
           <DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="navItemMenu tactile" aria-label={t("moreActions", { name: tag.name })}><MoreHorizontal size={15} /></button></DropdownMenu.Trigger>
             <DropdownMenu.Portal><DropdownMenu.Content className="menuContent" sideOffset={5}><DropdownMenu.Item className="menuItem danger" onSelect={() => props.onDeleteTag(tag)}><Trash2 size={15} />{t("deleteTag")}</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal>
           </DropdownMenu.Root>

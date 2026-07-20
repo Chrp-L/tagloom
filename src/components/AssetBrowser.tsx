@@ -26,8 +26,6 @@ interface Props {
   hasMore: boolean;
   noSources: boolean;
   contentMotionKey: string;
-  wovenAssetId?: string;
-  dropTargetAssetId?: string;
   onLoadMore: () => void;
   onFocus: (assetId?: string) => void;
   onToggleChecked: (assetId: string) => void;
@@ -174,8 +172,6 @@ export function AssetBrowser(props: Props) {
                 focused={props.focusedAssetId === asset.id}
                 checked={checkedSet.has(asset.id)}
                 checkedIds={props.checkedIds}
-                dropTarget={props.dropTargetAssetId === asset.id}
-                woven={props.wovenAssetId === asset.id}
                 collectionContext={props.collectionContext}
                 actions={actions}
                 onAssetKeyDown={handleAssetKeyDown}
@@ -189,7 +185,6 @@ export function AssetBrowser(props: Props) {
                 focused={props.focusedAssetId === asset.id}
                 checked={checkedSet.has(asset.id)}
                 checkedIds={props.checkedIds}
-                dropTarget={props.dropTargetAssetId === asset.id}
                 collectionContext={props.collectionContext}
                 actions={actions}
                 onAssetKeyDown={handleAssetKeyDown}

@@ -35,8 +35,6 @@ function renderSidebar(navigation: Parameters<typeof Sidebar>[0]["navigation"] =
     onRemoveSource,
     onDeleteCollection,
     onDeleteTag,
-    onTagPointerDown: vi.fn(),
-    onTagActivate: vi.fn(),
   };
   const view = render(<Tooltip.Provider><Sidebar {...props} /></Tooltip.Provider>);
   return { onRemoveSource, onDeleteCollection, onDeleteTag, props, ...view };
@@ -114,6 +112,12 @@ describe("sidebar information hierarchy", () => {
   it("does not render decorative section cable marks", () => {
     renderSidebar();
     expect(document.querySelector(".sectionCableMark")).toBeNull();
+  });
+
+  it("navigates to a tag with a normal click", () => {
+    const view = renderSidebar();
+    fireEvent.click(document.querySelector<HTMLButtonElement>(".tagNav")!);
+    expect(view.props.onNavigate).toHaveBeenCalledWith({ kind: "tag", id: "tag-a" });
   });
 });
 

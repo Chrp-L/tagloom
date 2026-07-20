@@ -11,8 +11,8 @@
   .assetListItem > span:nth-of-type(4) { display: none; }
 }
 @media (max-width: 820px) {
-  .homeWorkbenchContextAction { grid-template-columns: minmax(0, 1fr); }
-  .homeWorkbenchCover { min-height: 160px; }
+  .homeWorkbenchContextAction { height: auto; grid-template-columns: minmax(0, 1fr); }
+  .homeWorkbenchCover { height: 160px; }
   .homeWorkbenchContextCopy { border-top: 1px solid var(--line); border-left: 0; }
   .homeRecentGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

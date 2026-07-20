@@ -14,7 +14,6 @@ interface Props {
   focused: boolean;
   checked: boolean;
   checkedIds: string[];
-  dropTarget: boolean;
   collectionContext?: CollectionContext;
   actions: AssetActions;
   onAssetKeyDown: (event: KeyboardEvent<HTMLElement>, asset: Asset) => void;
@@ -43,7 +42,7 @@ export function AssetListRow(props: Props) {
     >
       <div
         data-asset-id={asset.id}
-        className={`assetListItem ${props.selectionMode === "browse" && props.focused ? "focused" : ""} ${props.selectionMode === "batch" && props.checked ? "checked" : ""} ${props.dropTarget ? "dragTarget" : ""}`}
+        className={`assetListItem ${props.selectionMode === "browse" && props.focused ? "focused" : ""} ${props.selectionMode === "batch" && props.checked ? "checked" : ""}`}
         tabIndex={0}
         onDoubleClick={() => { if (props.selectionMode === "browse") actions.preview(asset); }}
         onKeyDown={(event) => props.onAssetKeyDown(event, asset)}

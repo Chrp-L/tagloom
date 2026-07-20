@@ -13,7 +13,6 @@ import { Inspector } from "./components/Inspector";
 import { LibraryOverview } from "./components/LibraryOverview";
 import { Sidebar } from "./components/Sidebar";
 import { ScanStatusBar } from "./components/ScanStatusBar";
-import { TagDragOverlay } from "./components/TagDragOverlay";
 import { Toolbar } from "./components/Toolbar";
 import { WindowChrome } from "./components/WindowChrome";
 import { useHomeQuery, useLibraryQueries } from "./hooks/useLibraryQueries";
@@ -23,11 +22,10 @@ import { useAppPreferences } from "./hooks/useAppPreferences";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useLibraryActions } from "./hooks/useLibraryActions";
 import { usePreviewController } from "./hooks/usePreviewController";
-import { useTagDrag } from "./hooks/useTagDrag";
 import { useTransientCue } from "./hooks/useTransientCue";
 import { getAssetActionTargets } from "./features/selection/selectionModel";
 import { useUiStore } from "./store";
-import type { Asset, AssetQuery, JobProgress, Tag } from "./types";
+import type { Asset, AssetQuery, JobProgress } from "./types";
 
 export default function App() {
   const { t } = useTranslation();
@@ -138,11 +136,6 @@ export default function App() {
   const createEntity = (name: string, color?: string) => action(
     () => createKind === "tag" ? api.createTag(name, color || "#ee6859") : api.createCollection(name),
   );
-  const dropTag = useCallback((assetId: string, tag: Tag) => {
-    const targets = checkedIdSet.has(assetId) ? ui.checkedIds : [assetId];
-    void libraryActions.setTags(tag.id, true, targets);
-  }, [checkedIdSet, libraryActions, ui.checkedIds]);
-  const { drag: tagDrag, wovenAssetId, begin: beginTagDrag, canActivate: canActivateTag } = useTagDrag(dropTag);
   const { preview, prepareVideo, previewAssets, previewOpen, setPreviewOpen, previewIndex, setPreviewIndex } = usePreviewController({
     assets,
     queryClient,
@@ -170,7 +163,7 @@ export default function App() {
           onRescan={(id) => void libraryActions.rescan(id)} onRemoveSource={(source) => setLibraryDeleteTarget({ kind: "source", id: source.id, name: source.name })}
           onDeleteCollection={(collection) => setLibraryDeleteTarget({ kind: "collection", id: collection.id, name: collection.name })}
           onDeleteTag={(tag) => setLibraryDeleteTarget({ kind: "tag", id: tag.id, name: tag.name })}
-          onTagPointerDown={beginTagDrag} onTagActivate={(id) => { if (canActivateTag()) { cueWeave("filter"); ui.setNavigation({ kind: "tag", id }); } }} />
+          />
         <main className="workspace">
           <Toolbar mode={ui.navigation.kind === "home" ? "home" : "assets"} title={title} count={total} search={search} sort={sort || "newest"} view={ui.view} gridColumns={ui.gridColumns} selectionMode={ui.selectionMode} checkedCount={ui.checkedIds.length} eventCue={weaveCue}
             onSearch={changeSearch} onSort={changeSort} onView={(value) => { cueWeave("layout"); ui.setView(value); }} onGridColumns={(value) => { cueWeave("layout"); ui.setGridColumns(value); }} onEnterBatch={ui.enterBatchSelection} onExitBatch={ui.exitBatchSelection} onSettings={() => setSettingsOpen(true)} />
@@ -179,7 +172,7 @@ export default function App() {
             hasSources={(bootstrap.data?.sources.length ?? 0) > 0} onAddSource={libraryActions.addFolder}
             onOpenCollection={(id) => ui.setNavigation({ kind: "collection", id })} onViewCollections={() => ui.revealSidebarSection("collections")} onCreateCollection={() => setCreateKind("collection")}
             onFocus={(asset) => ui.focusAsset(asset?.id)} onPreview={(asset, context) => preview(asset, context)} /> : <AssetBrowser assets={assets} total={total} view={ui.view} gridColumns={ui.gridColumns} selectionMode={ui.selectionMode} focusedAssetId={ui.focusedAssetId} checkedIds={ui.checkedIds} loading={assetsQuery.isLoading || assetsQuery.isFetchingNextPage}
-            hasMore={Boolean(assetsQuery.hasNextPage)} error={assetsQuery.error instanceof Error ? assetsQuery.error.message : assetsQuery.error ? String(assetsQuery.error) : undefined} noSources={!bootstrap.isLoading && (bootstrap.data?.sources.length ?? 0) === 0} contentMotionKey={browserMotionKey} wovenAssetId={wovenAssetId} dropTargetAssetId={tagDrag?.targetAssetId}
+            hasMore={Boolean(assetsQuery.hasNextPage)} error={assetsQuery.error instanceof Error ? assetsQuery.error.message : assetsQuery.error ? String(assetsQuery.error) : undefined} noSources={!bootstrap.isLoading && (bootstrap.data?.sources.length ?? 0) === 0} contentMotionKey={browserMotionKey}
             onLoadMore={() => void assetsQuery.fetchNextPage()} onFocus={ui.focusAsset} onToggleChecked={ui.toggleChecked} onCheckRange={(assetId) => ui.checkRange(orderedAssetIds, assetId)} onPreview={preview}
             onRename={setRenameAsset} onMove={(asset) => void libraryActions.move(asset)} onOpen={(asset) => void libraryActions.open(asset)} onReveal={(asset) => void libraryActions.reveal(asset)} onTrash={libraryActions.trash}
             collectionContext={activeCollection ? { id: activeCollection.id, coverAssetId: activeCollection.coverAssetId } : undefined}
@@ -191,8 +184,6 @@ export default function App() {
           onSaveNote={(id, note) => void action(() => api.updateAssetNote(id, note), t("operationComplete"))} onRename={setRenameAsset} onMove={(asset) => void libraryActions.move(asset)}
           onTrash={() => libraryActions.trash(inspectorTargetIds)} onReveal={(asset) => void libraryActions.reveal(asset)} onOpen={(asset) => void libraryActions.open(asset)} />}
       </div>
-      <TagDragOverlay drag={tagDrag} />
-
       <AppOverlays
         createKind={createKind}
         onCreateKindChange={setCreateKind}

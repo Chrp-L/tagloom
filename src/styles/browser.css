@@ -7,7 +7,6 @@
 .assetTile.focused { outline: 1px solid var(--line-strong); outline-offset: 3px; }
 .assetTile.checked .assetThumb { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .assetTile.checked .assetThumb::after { content: ""; position: absolute; z-index: 2; left: 34px; top: 18px; width: 22px; height: 2px; border-radius: 2px; background: var(--accent); transform-origin: left; animation: stitchIn 180ms cubic-bezier(.22,1,.36,1); }
-.assetTile.dragTarget .assetThumb { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 4px var(--accent-soft); }
 .assetThumb img { width: 100%; height: 100%; display: block; object-fit: cover; transition: filter var(--state); }
 .assetTile:hover .assetThumb img { filter: saturate(1.035) contrast(1.015); }
 .thumbnailLoader { position: relative; width: 100%; height: 100%; display: block; overflow: hidden; }
@@ -21,7 +20,6 @@
 .selectionCheckMark { width: 100%; height: 100%; display: grid; place-items: center; font-style: normal; }
 .assetTile.checked .selectControl span { border-color: var(--accent); background: var(--accent); }
 .durationBadge { position: absolute; right: 7px; bottom: 7px; height: 20px; display: flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 4px; background: rgba(22, 26, 24, 0.78); color: #fff; font-size: 9px; }
-.weaveTrace { position: absolute; left: 10%; right: 10%; bottom: 9px; height: 2px; border-radius: 2px; transform-origin: left; background: var(--accent); box-shadow: 0 -6px 0 -0.5px color-mix(in srgb, var(--accent) 62%, transparent); }
 .assetCaption { min-width: 0; height: 51px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 8px 2px 0; }
 .assetCaption > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .assetCaption strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 500; }
@@ -38,7 +36,6 @@
 .listSelectionSlot { width: 20px; height: 20px; display: grid; place-items: center; }
 .listCheck { width: 17px; height: 17px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 3px; background: transparent; color: inherit; }
 .assetListItem.checked .listCheck { border-color: var(--accent); background: var(--accent); color: #fff; }
-.assetListItem.dragTarget { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 .listThumb { position: relative; width: 48px; height: 38px; overflow: hidden; display: grid; place-items: center; border-radius: 4px; background: var(--surface-soft); }
 .listThumb img { width: 100%; height: 100%; object-fit: cover; }
 .listThumb svg:last-child { position: absolute; right: 3px; bottom: 3px; color: #fff; filter: drop-shadow(0 1px 2px #000); }

@@ -14,8 +14,6 @@ interface Props {
   focused: boolean;
   checked: boolean;
   checkedIds: string[];
-  dropTarget: boolean;
-  woven: boolean;
   collectionContext?: CollectionContext;
   actions: AssetActions;
   onAssetKeyDown: (event: KeyboardEvent<HTMLElement>, asset: Asset) => void;
@@ -44,12 +42,12 @@ export function AssetGridItem(props: Props) {
     >
       <article
         data-asset-id={asset.id}
-        className={`assetTile ${props.selectionMode === "browse" && props.focused ? "focused" : ""} ${props.selectionMode === "batch" && props.checked ? "checked" : ""} ${props.dropTarget ? "dragTarget" : ""}`}
+        className={`assetTile ${props.selectionMode === "browse" && props.focused ? "focused" : ""} ${props.selectionMode === "batch" && props.checked ? "checked" : ""}`}
         tabIndex={0}
         onDoubleClick={() => { if (props.selectionMode === "browse") actions.preview(asset); }}
         onKeyDown={(event) => props.onAssetKeyDown(event, asset)}
       >
-        <AssetThumbnail asset={asset} variant="grid" woven={props.woven}>
+        <AssetThumbnail asset={asset} variant="grid">
           <AssetSelectionControl
             variant="grid"
             visible={props.selectionMode === "batch"}

@@ -24,6 +24,9 @@ function updateDemoCounts(): void {
   for (const source of demoBootstrap.sources) {
     source.assetCount = demoAssets.filter((asset) => asset.sourceId === source.id).length;
   }
+  for (const tag of demoBootstrap.tags) {
+    tag.assetCount = demoAssets.filter((asset) => asset.tags.some((item) => item.id === tag.id)).length;
+  }
 }
 
 function homeSnapshot(): HomeSnapshot {
@@ -85,6 +88,7 @@ export const demoApi = {
     replaceDemoAssets((assets) => assets.map((asset) => assetIds.includes(asset.id)
       ? { ...asset, tags: attached ? [...asset.tags.filter((item) => item.id !== tagId), tag] : asset.tags.filter((item) => item.id !== tagId) }
       : asset));
+    updateDemoCounts();
   },
   createCollection: async (name) => {
     const id = `collection-${Date.now()}`;

@@ -32,6 +32,23 @@ const ASSET_ROW_SELECT: &str =
      a.modified_at, a.captured_at, a.width, a.height, a.duration_ms, a.thumbnail_path,
      a.preview_path, a.note, a.status FROM assets a";
 
+const BOOTSTRAP_TAGS_SQL: &str = "SELECT t.id, t.name, t.color, COUNT(a.id) asset_count FROM tags t
+     LEFT JOIN asset_tags at ON at.tag_id=t.id
+     LEFT JOIN assets a ON a.id=at.asset_id AND a.status='ready'
+     GROUP BY t.id ORDER BY t.name COLLATE NOCASE";
+
+const BOOTSTRAP_COLLECTIONS_SQL: &str =
+    "SELECT c.id, c.name, COUNT(a.id) asset_count, c.cover_asset_id FROM collections c
+     LEFT JOIN collection_items ci ON ci.collection_id=c.id
+     LEFT JOIN assets a ON a.id=ci.asset_id AND a.status='ready'
+     GROUP BY c.id ORDER BY c.name COLLATE NOCASE";
+
+const HOME_COLLECTIONS_SQL: &str =
+    "SELECT c.id, c.name, COUNT(a.id) asset_count, c.cover_asset_id FROM collections c
+     LEFT JOIN collection_items ci ON ci.collection_id=c.id
+     LEFT JOIN assets a ON a.id=ci.asset_id AND a.status='ready'
+     GROUP BY c.id ORDER BY c.updated_at DESC, c.id ASC LIMIT 6";
+
 fn normalized(path: &Path) -> String {
     path.to_string_lossy()
         .replace('/', "\\")
@@ -88,16 +105,12 @@ pub async fn get_bootstrap(state: State<'_, AppState>) -> AppResult<LibraryBoots
     )
     .fetch_all(&db)
     .await?;
-    let tags = sqlx::query_as::<_, Tag>(
-        "SELECT t.id, t.name, t.color, COUNT(at.asset_id) asset_count FROM tags t
-         LEFT JOIN asset_tags at ON at.tag_id=t.id GROUP BY t.id ORDER BY t.name COLLATE NOCASE",
-    )
-    .fetch_all(&db)
-    .await?;
-    let collections = sqlx::query_as::<_, Collection>(
-        "SELECT c.id, c.name, COUNT(ci.asset_id) asset_count, c.cover_asset_id FROM collections c
-         LEFT JOIN collection_items ci ON ci.collection_id=c.id GROUP BY c.id ORDER BY c.name COLLATE NOCASE"
-    ).fetch_all(&db).await?;
+    let tags = sqlx::query_as::<_, Tag>(BOOTSTRAP_TAGS_SQL)
+        .fetch_all(&db)
+        .await?;
+    let collections = sqlx::query_as::<_, Collection>(BOOTSTRAP_COLLECTIONS_SQL)
+        .fetch_all(&db)
+        .await?;
     let (total_assets, image_count, video_count) = sqlx::query_as::<_, (i64, i64, i64)>(
         "SELECT COUNT(*), SUM(CASE WHEN media_kind='image' THEN 1 ELSE 0 END),
          SUM(CASE WHEN media_kind='video' THEN 1 ELSE 0 END) FROM assets WHERE status='ready'",
@@ -117,10 +130,9 @@ pub async fn get_bootstrap(state: State<'_, AppState>) -> AppResult<LibraryBoots
 #[tauri::command]
 pub async fn get_home_snapshot(state: State<'_, AppState>) -> AppResult<HomeSnapshot> {
     let db = state.db().await;
-    let collections = sqlx::query_as::<_, Collection>(
-        "SELECT c.id, c.name, COUNT(ci.asset_id) asset_count, c.cover_asset_id FROM collections c
-         LEFT JOIN collection_items ci ON ci.collection_id=c.id GROUP BY c.id ORDER BY c.updated_at DESC, c.id ASC LIMIT 6"
-    ).fetch_all(&db).await?;
+    let collections = sqlx::query_as::<_, Collection>(HOME_COLLECTIONS_SQL)
+        .fetch_all(&db)
+        .await?;
     let mut cards = Vec::with_capacity(collections.len());
     for collection in collections {
         let custom_id = if let Some(asset_id) = &collection.cover_asset_id {
@@ -839,7 +851,8 @@ pub async fn set_setting(key: String, value: String, state: State<'_, AppState>)
 
 #[cfg(test)]
 mod tests {
-    use super::normalized;
+    use super::{normalized, Tag, BOOTSTRAP_TAGS_SQL};
+    use sqlx::SqlitePool;
     use std::path::Path;
 
     #[test]
@@ -848,5 +861,47 @@ mod tests {
             normalized(Path::new("C:/Media/Photos/")),
             "c:\\media\\photos"
         );
+    }
+
+    #[tokio::test]
+    async fn bootstrap_tag_counts_only_include_ready_assets() {
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE tags(id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query("CREATE TABLE assets(id TEXT PRIMARY KEY, status TEXT NOT NULL)")
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE asset_tags(asset_id TEXT NOT NULL, tag_id TEXT NOT NULL)")
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO tags(id, name, color) VALUES('tag', 'Reference', '#ee6859')")
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO assets(id, status) VALUES('ready', 'ready'), ('trashed', 'missing')",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO asset_tags(asset_id, tag_id) VALUES('ready', 'tag'), ('trashed', 'tag')",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+
+        let tag = sqlx::query_as::<_, Tag>(BOOTSTRAP_TAGS_SQL)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+
+        assert_eq!(tag.asset_count, 1);
     }
 }
