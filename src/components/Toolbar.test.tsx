@@ -6,6 +6,18 @@ import { Toolbar } from "./Toolbar";
 afterEach(cleanup);
 
 describe("toolbar primary state", () => {
+  it("keeps the home title clean while preserving search and the event loom", () => {
+    const props = {
+      mode: "home" as const, title: "Home", count: 27, search: "", sort: "newest", view: "grid" as const, gridColumns: 4 as const, selectionMode: "browse" as const, checkedCount: 0,
+      onSearch: vi.fn(), onSort: vi.fn(), onView: vi.fn(), onGridColumns: vi.fn(), onEnterBatch: vi.fn(), onExitBatch: vi.fn(), onSettings: vi.fn(),
+    };
+    render(<Toolbar {...props} />);
+    expect(screen.getByRole("heading", { name: "Home" })).toBeInTheDocument();
+    expect(screen.queryByText(/27 items|27 项/)).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+    expect(document.querySelector(".signalLoom")).not.toBeNull();
+  });
+
   it("preserves the search value while selection mode is shown", async () => {
     const props = {
       title: "Library", count: 4, search: "needle", sort: "newest", view: "grid" as const, gridColumns: 4 as const, selectionMode: "browse" as const, checkedCount: 0,

@@ -1,17 +1,18 @@
-import { useEffect, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import { useEffect } from "react";
 import { api } from "../api";
 import type { JobProgress } from "../types";
 
 interface LibraryActivityOptions {
+  job?: JobProgress;
+  setJob: Dispatch<SetStateAction<JobProgress | undefined>>;
   recentJobs?: JobProgress[];
   refresh: () => Promise<void>;
   run: (operation: () => Promise<unknown>) => Promise<void>;
   onScanComplete: () => void;
 }
 
-export function useLibraryActivity({ recentJobs, refresh, run, onScanComplete }: LibraryActivityOptions) {
-  const [job, setJob] = useState<JobProgress>();
-
+export function useLibraryActivity({ job, setJob, recentJobs, refresh, run, onScanComplete }: LibraryActivityOptions) {
   useEffect(() => {
     let unlistenProgress = () => {};
     let unlistenLibrary = () => {};
@@ -36,7 +37,7 @@ export function useLibraryActivity({ recentJobs, refresh, run, onScanComplete }:
       unlistenDirty();
       dirtyTimers.forEach((timer) => window.clearTimeout(timer));
     };
-  }, [refresh, run]);
+  }, [refresh, run, setJob]);
 
   useEffect(() => {
     const latest = recentJobs?.[0];
@@ -46,7 +47,5 @@ export function useLibraryActivity({ recentJobs, refresh, run, onScanComplete }:
       onScanComplete();
       void refresh();
     }
-  }, [job?.status, onScanComplete, recentJobs, refresh]);
-
-  return { job, setJob };
+  }, [job?.status, onScanComplete, recentJobs, refresh, setJob]);
 }

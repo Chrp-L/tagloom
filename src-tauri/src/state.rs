@@ -1,8 +1,12 @@
 use crate::error::{AppError, AppResult};
 use directories::ProjectDirs;
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use notify::RecommendedWatcher;
-use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex as StdMutex}};
+use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex as StdMutex},
+};
 use tokio::sync::{Mutex, RwLock};
 
 #[derive(Clone)]
@@ -31,8 +35,9 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn new() -> AppResult<Self> {
-        let project = ProjectDirs::from("app", "tagloom", "Tagloom")
+    pub async fn new(app_identifier: &str) -> AppResult<Self> {
+        let application = project_application(app_identifier, cfg!(debug_assertions));
+        let project = ProjectDirs::from("app", "tagloom", application)
             .ok_or_else(|| AppError::Message("Unable to resolve Tagloom data folders".into()))?;
         let data_dir = project.data_dir().to_path_buf();
         let cache_dir = project.cache_dir().to_path_buf();
@@ -66,7 +71,10 @@ impl AppState {
             .try_init();
 
         let pool = Self::connect(&paths.db_path).await?;
-        sqlx::migrate!().run(&pool).await.map_err(|e| AppError::Message(e.to_string()))?;
+        sqlx::migrate!()
+            .run(&pool)
+            .await
+            .map_err(|e| AppError::Message(e.to_string()))?;
 
         Ok(Self {
             pool: RwLock::new(pool),
@@ -78,18 +86,53 @@ impl AppState {
     }
 
     pub async fn connect(path: &std::path::Path) -> AppResult<SqlitePool> {
-        let url = format!("sqlite://{}?mode=rwc", path.to_string_lossy().replace('\\', "/"));
+        let url = format!(
+            "sqlite://{}?mode=rwc",
+            path.to_string_lossy().replace('\\', "/")
+        );
         let pool = SqlitePoolOptions::new()
             .max_connections(8)
             .connect(&url)
             .await?;
-        sqlx::query("PRAGMA foreign_keys = ON").execute(&pool).await?;
-        sqlx::query("PRAGMA journal_mode = WAL").execute(&pool).await?;
-        sqlx::query("PRAGMA busy_timeout = 5000").execute(&pool).await?;
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA journal_mode = WAL")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA busy_timeout = 5000")
+            .execute(&pool)
+            .await?;
         Ok(pool)
     }
 
     pub async fn db(&self) -> SqlitePool {
         self.pool.read().await.clone()
+    }
+}
+
+fn project_application(app_identifier: &str, debug_build: bool) -> &'static str {
+    if debug_build || app_identifier.ends_with(".dev") {
+        "TagloomDev"
+    } else {
+        "Tagloom"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::project_application;
+
+    #[test]
+    fn isolates_debug_and_development_config_data() {
+        assert_eq!(project_application("app.tagloom.desktop", false), "Tagloom");
+        assert_eq!(
+            project_application("app.tagloom.desktop", true),
+            "TagloomDev"
+        );
+        assert_eq!(
+            project_application("app.tagloom.desktop.dev", false),
+            "TagloomDev"
+        );
     }
 }

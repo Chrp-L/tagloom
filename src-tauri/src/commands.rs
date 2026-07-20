@@ -1,14 +1,20 @@
 use crate::{
     error::{AppError, AppResult},
     media,
-    models::{Asset, AssetPage, AssetQuery, AssetRow, Collection, CollectionHomeCard, HomeSnapshot, JobProgress, JobRow, LibraryBootstrap, Setting, SourceRoot, Tag},
+    models::{
+        Asset, AssetPage, AssetQuery, AssetRow, Collection, CollectionHomeCard, HomeSnapshot,
+        JobProgress, JobRow, LibraryBootstrap, Setting, SourceRoot, Tag,
+    },
     scanner,
     state::AppState,
     watcher,
 };
 use chrono::Utc;
 use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool};
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 use tauri::{AppHandle, State};
 use uuid::Uuid;
 
@@ -26,8 +32,28 @@ const ASSET_ROW_SELECT: &str =
      a.modified_at, a.captured_at, a.width, a.height, a.duration_ms, a.thumbnail_path,
      a.preview_path, a.note, a.status FROM assets a";
 
+const BOOTSTRAP_TAGS_SQL: &str = "SELECT t.id, t.name, t.color, COUNT(a.id) asset_count FROM tags t
+     LEFT JOIN asset_tags at ON at.tag_id=t.id
+     LEFT JOIN assets a ON a.id=at.asset_id AND a.status='ready'
+     GROUP BY t.id ORDER BY t.name COLLATE NOCASE";
+
+const BOOTSTRAP_COLLECTIONS_SQL: &str =
+    "SELECT c.id, c.name, COUNT(a.id) asset_count, c.cover_asset_id FROM collections c
+     LEFT JOIN collection_items ci ON ci.collection_id=c.id
+     LEFT JOIN assets a ON a.id=ci.asset_id AND a.status='ready'
+     GROUP BY c.id ORDER BY c.name COLLATE NOCASE";
+
+const HOME_COLLECTIONS_SQL: &str =
+    "SELECT c.id, c.name, COUNT(a.id) asset_count, c.cover_asset_id FROM collections c
+     LEFT JOIN collection_items ci ON ci.collection_id=c.id
+     LEFT JOIN assets a ON a.id=ci.asset_id AND a.status='ready'
+     GROUP BY c.id ORDER BY c.updated_at DESC, c.id ASC LIMIT 6";
+
 fn normalized(path: &Path) -> String {
-    path.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase()
+    path.to_string_lossy()
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_ascii_lowercase()
 }
 
 async fn hydrate_assets(db: &SqlitePool, rows: Vec<AssetRow>) -> AppResult<Vec<Asset>> {
@@ -37,17 +63,30 @@ async fn hydrate_assets(db: &SqlitePool, rows: Vec<AssetRow>) -> AppResult<Vec<A
             "SELECT at.asset_id, t.id, t.name, t.color, 0 asset_count FROM asset_tags at JOIN tags t ON t.id=at.tag_id WHERE at.asset_id IN ("
         );
         let mut separated = tags_builder.separated(",");
-        for row in &rows { separated.push_bind(&row.id); }
+        for row in &rows {
+            separated.push_bind(&row.id);
+        }
         separated.push_unseparated(") ORDER BY t.name COLLATE NOCASE");
-        let links = tags_builder.build_query_as::<TagLink>().fetch_all(db).await?;
+        let links = tags_builder
+            .build_query_as::<TagLink>()
+            .fetch_all(db)
+            .await?;
         for link in links {
-            tag_map.entry(link.asset_id).or_default().push(Tag { id: link.id, name: link.name, color: link.color, asset_count: link.asset_count });
+            tag_map.entry(link.asset_id).or_default().push(Tag {
+                id: link.id,
+                name: link.name,
+                color: link.color,
+                asset_count: link.asset_count,
+            });
         }
     }
-    Ok(rows.into_iter().map(|row| {
-        let tags = tag_map.remove(&row.id).unwrap_or_default();
-        Asset { row, tags }
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let tags = tag_map.remove(&row.id).unwrap_or_default();
+            Asset { row, tags }
+        })
+        .collect())
 }
 
 async fn home_assets(db: &SqlitePool, suffix: &str) -> AppResult<Vec<Asset>> {
@@ -62,54 +101,78 @@ pub async fn get_bootstrap(state: State<'_, AppState>) -> AppResult<LibraryBoots
     let sources = sqlx::query_as::<_, SourceRoot>(
         "SELECT s.id, s.path, s.name, s.status, s.last_scanned_at, COUNT(a.id) asset_count
          FROM source_roots s LEFT JOIN assets a ON a.source_id=s.id AND a.status='ready'
-         GROUP BY s.id ORDER BY s.created_at"
-    ).fetch_all(&db).await?;
-    let tags = sqlx::query_as::<_, Tag>(
-        "SELECT t.id, t.name, t.color, COUNT(at.asset_id) asset_count FROM tags t
-         LEFT JOIN asset_tags at ON at.tag_id=t.id GROUP BY t.id ORDER BY t.name COLLATE NOCASE"
-    ).fetch_all(&db).await?;
-    let collections = sqlx::query_as::<_, Collection>(
-        "SELECT c.id, c.name, COUNT(ci.asset_id) asset_count, c.cover_asset_id FROM collections c
-         LEFT JOIN collection_items ci ON ci.collection_id=c.id GROUP BY c.id ORDER BY c.name COLLATE NOCASE"
-    ).fetch_all(&db).await?;
+         GROUP BY s.id ORDER BY s.created_at",
+    )
+    .fetch_all(&db)
+    .await?;
+    let tags = sqlx::query_as::<_, Tag>(BOOTSTRAP_TAGS_SQL)
+        .fetch_all(&db)
+        .await?;
+    let collections = sqlx::query_as::<_, Collection>(BOOTSTRAP_COLLECTIONS_SQL)
+        .fetch_all(&db)
+        .await?;
     let (total_assets, image_count, video_count) = sqlx::query_as::<_, (i64, i64, i64)>(
         "SELECT COUNT(*), SUM(CASE WHEN media_kind='image' THEN 1 ELSE 0 END),
-         SUM(CASE WHEN media_kind='video' THEN 1 ELSE 0 END) FROM assets WHERE status='ready'"
-    ).fetch_one(&db).await?;
-    Ok(LibraryBootstrap { sources, tags, collections, total_assets, image_count, video_count })
+         SUM(CASE WHEN media_kind='video' THEN 1 ELSE 0 END) FROM assets WHERE status='ready'",
+    )
+    .fetch_one(&db)
+    .await?;
+    Ok(LibraryBootstrap {
+        sources,
+        tags,
+        collections,
+        total_assets,
+        image_count,
+        video_count,
+    })
 }
 
 #[tauri::command]
 pub async fn get_home_snapshot(state: State<'_, AppState>) -> AppResult<HomeSnapshot> {
     let db = state.db().await;
-    let collections = sqlx::query_as::<_, Collection>(
-        "SELECT c.id, c.name, COUNT(ci.asset_id) asset_count, c.cover_asset_id FROM collections c
-         LEFT JOIN collection_items ci ON ci.collection_id=c.id GROUP BY c.id ORDER BY c.updated_at DESC, c.id ASC LIMIT 6"
-    ).fetch_all(&db).await?;
+    let collections = sqlx::query_as::<_, Collection>(HOME_COLLECTIONS_SQL)
+        .fetch_all(&db)
+        .await?;
     let mut cards = Vec::with_capacity(collections.len());
     for collection in collections {
         let custom_id = if let Some(asset_id) = &collection.cover_asset_id {
             sqlx::query_scalar::<_, String>(
                 "SELECT a.id FROM collection_items ci JOIN assets a ON a.id=ci.asset_id
-                 WHERE ci.collection_id=? AND ci.asset_id=? AND a.status='ready' LIMIT 1"
-            ).bind(&collection.id).bind(asset_id).fetch_optional(&db).await?
-        } else { None };
+                 WHERE ci.collection_id=? AND ci.asset_id=? AND a.status='ready' LIMIT 1",
+            )
+            .bind(&collection.id)
+            .bind(asset_id)
+            .fetch_optional(&db)
+            .await?
+        } else {
+            None
+        };
         let cover_id = match &custom_id {
             Some(id) => Some(id.clone()),
-            None => sqlx::query_scalar::<_, String>(
-                "SELECT a.id FROM collection_items ci JOIN assets a ON a.id=ci.asset_id
+            None => {
+                sqlx::query_scalar::<_, String>(
+                    "SELECT a.id FROM collection_items ci JOIN assets a ON a.id=ci.asset_id
                  WHERE ci.collection_id=? AND a.status='ready'
-                 ORDER BY ci.position ASC, ci.created_at ASC, ci.asset_id ASC LIMIT 1"
-            ).bind(&collection.id).fetch_optional(&db).await?,
+                 ORDER BY ci.position ASC, ci.created_at ASC, ci.asset_id ASC LIMIT 1",
+                )
+                .bind(&collection.id)
+                .fetch_optional(&db)
+                .await?
+            }
         };
         let cover_asset = if let Some(id) = cover_id {
             let sql = format!("{ASSET_ROW_SELECT} WHERE a.id=? AND a.status='ready'");
-            let row = sqlx::query_as::<_, AssetRow>(&sql).bind(id).fetch_optional(&db).await?;
+            let row = sqlx::query_as::<_, AssetRow>(&sql)
+                .bind(id)
+                .fetch_optional(&db)
+                .await?;
             match row {
                 Some(row) => hydrate_assets(&db, vec![row]).await?.pop(),
                 None => None,
             }
-        } else { None };
+        } else {
+            None
+        };
         cards.push(CollectionHomeCard {
             id: collection.id,
             name: collection.name,
@@ -119,24 +182,44 @@ pub async fn get_home_snapshot(state: State<'_, AppState>) -> AppResult<HomeSnap
         });
     }
     let (recent_viewed, recent_imported, recent_modified) = tokio::try_join!(
-        home_assets(&db, "AND a.last_viewed_at IS NOT NULL ORDER BY a.last_viewed_at DESC, a.id DESC"),
+        home_assets(
+            &db,
+            "AND a.last_viewed_at IS NOT NULL ORDER BY a.last_viewed_at DESC, a.id DESC"
+        ),
         home_assets(&db, "ORDER BY a.created_at DESC, a.id DESC"),
         home_assets(&db, "ORDER BY a.modified_at DESC, a.id DESC"),
     )?;
-    Ok(HomeSnapshot { collections: cards, recent_viewed, recent_imported, recent_modified })
+    Ok(HomeSnapshot {
+        collections: cards,
+        recent_viewed,
+        recent_imported,
+        recent_modified,
+    })
 }
 
 fn bind_filters<'a>(builder: &mut QueryBuilder<'a, Sqlite>, query: &'a AssetQuery) {
     builder.push(" WHERE a.status='ready'");
-    if let Some(value) = &query.source_id { builder.push(" AND a.source_id=").push_bind(value); }
-    if let Some(value) = &query.media_kind { builder.push(" AND a.media_kind=").push_bind(value); }
+    if let Some(value) = &query.source_id {
+        builder.push(" AND a.source_id=").push_bind(value);
+    }
+    if let Some(value) = &query.media_kind {
+        builder.push(" AND a.media_kind=").push_bind(value);
+    }
     if let Some(value) = &query.tag_id {
-        builder.push(" AND EXISTS(SELECT 1 FROM asset_tags at WHERE at.asset_id=a.id AND at.tag_id=").push_bind(value).push(")");
+        builder
+            .push(" AND EXISTS(SELECT 1 FROM asset_tags at WHERE at.asset_id=a.id AND at.tag_id=")
+            .push_bind(value)
+            .push(")");
     }
     if let Some(value) = &query.collection_id {
         builder.push(" AND EXISTS(SELECT 1 FROM collection_items ci WHERE ci.asset_id=a.id AND ci.collection_id=").push_bind(value).push(")");
     }
-    if let Some(value) = query.search.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(value) = query
+        .search
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         if value.chars().count() >= 3 {
             let fts = format!("\"{}\"", value.replace('"', "\"\""));
             builder.push(" AND EXISTS(SELECT 1 FROM assets_fts f WHERE f.asset_id=a.id AND assets_fts MATCH ").push_bind(fts).push(")");
@@ -154,7 +237,12 @@ fn bind_filters<'a>(builder: &mut QueryBuilder<'a, Sqlite>, query: &'a AssetQuer
 pub async fn list_assets(query: AssetQuery, state: State<'_, AppState>) -> AppResult<AssetPage> {
     let db = state.db().await;
     let limit = query.limit.unwrap_or(120).clamp(1, 240) as i64;
-    let offset = query.cursor.as_deref().and_then(|value| value.parse::<i64>().ok()).unwrap_or(0).max(0);
+    let offset = query
+        .cursor
+        .as_deref()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0)
+        .max(0);
     let mut count_builder = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM assets a");
     bind_filters(&mut count_builder, &query);
     let total: i64 = count_builder.build_query_scalar().fetch_one(&db).await?;
@@ -167,30 +255,57 @@ pub async fn list_assets(query: AssetQuery, state: State<'_, AppState>) -> AppRe
         Some("largest") => "a.byte_size DESC, a.id ASC",
         _ => "COALESCE(a.captured_at, a.modified_at) DESC, a.id DESC",
     };
-    builder.push(" ORDER BY ").push(order).push(" LIMIT ").push_bind(limit).push(" OFFSET ").push_bind(offset);
+    builder
+        .push(" ORDER BY ")
+        .push(order)
+        .push(" LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
     let rows = builder.build_query_as::<AssetRow>().fetch_all(&db).await?;
     let items = hydrate_assets(&db, rows).await?;
     let next = (offset + limit < total).then(|| (offset + limit).to_string());
-    Ok(AssetPage { items, next_cursor: next, total })
+    Ok(AssetPage {
+        items,
+        next_cursor: next,
+        total,
+    })
 }
 
 #[tauri::command]
-pub async fn add_source(path: String, app: AppHandle, state: State<'_, AppState>) -> AppResult<String> {
+pub async fn add_source(
+    path: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
     let canonical = dunce::canonicalize(&path)?;
-    if !canonical.is_dir() { return Err("Please choose an available folder".into()); }
+    if !canonical.is_dir() {
+        return Err("Please choose an available folder".into());
+    }
     let db = state.db().await;
-    let existing: Vec<String> = sqlx::query_scalar("SELECT path FROM source_roots").fetch_all(&db).await?;
+    let existing: Vec<String> = sqlx::query_scalar("SELECT path FROM source_roots")
+        .fetch_all(&db)
+        .await?;
     let candidate = normalized(&canonical);
     if existing.iter().any(|item| {
         let current = normalized(Path::new(item));
-        candidate == current || candidate.starts_with(&(current.clone() + "\\")) || current.starts_with(&(candidate.clone() + "\\"))
-    }) { return Err("This folder overlaps an existing source".into()); }
+        candidate == current
+            || candidate.starts_with(&(current.clone() + "\\"))
+            || current.starts_with(&(candidate.clone() + "\\"))
+    }) {
+        return Err("This folder overlaps an existing source".into());
+    }
     let id = Uuid::new_v4().to_string();
-    let name = canonical.file_name().map(|v| v.to_string_lossy().to_string()).unwrap_or_else(|| canonical.display().to_string());
+    let name = canonical
+        .file_name()
+        .map(|v| v.to_string_lossy().to_string())
+        .unwrap_or_else(|| canonical.display().to_string());
     let now = Utc::now().to_rfc3339();
     sqlx::query("INSERT INTO source_roots(id, path, name, status, created_at, updated_at) VALUES(?, ?, ?, 'scanning', ?, ?)")
         .bind(&id).bind(canonical.to_string_lossy().to_string()).bind(name).bind(&now).bind(&now).execute(&db).await?;
-    if let Err(error) = watcher::attach(app.clone(), &state, id.clone(), &canonical) { tracing::warn!(error = %error, "source watcher could not be started"); }
+    if let Err(error) = watcher::attach(app.clone(), &state, id.clone(), &canonical) {
+        tracing::warn!(error = %error, "source watcher could not be started");
+    }
     scanner::start_scan(app, &state, id.clone(), canonical).await?;
     Ok(id)
 }
@@ -198,7 +313,10 @@ pub async fn add_source(path: String, app: AppHandle, state: State<'_, AppState>
 #[tauri::command]
 pub async fn remove_source(id: String, state: State<'_, AppState>) -> AppResult<()> {
     watcher::detach(&state, &id);
-    sqlx::query("DELETE FROM source_roots WHERE id=?").bind(id).execute(&state.db().await).await?;
+    sqlx::query("DELETE FROM source_roots WHERE id=?")
+        .bind(id)
+        .execute(&state.db().await)
+        .await?;
     Ok(())
 }
 
@@ -206,23 +324,48 @@ pub async fn remove_source(id: String, state: State<'_, AppState>) -> AppResult<
 pub async fn prepare_video_preview(id: String, state: State<'_, AppState>) -> AppResult<String> {
     let db = state.db().await;
     let (source, quick_hash, existing) = sqlx::query_as::<_, (String, String, Option<String>)>(
-        "SELECT path, quick_hash, preview_path FROM assets WHERE id=? AND media_kind='video'"
-    ).bind(&id).fetch_optional(&db).await?.ok_or("Video asset not found")?;
-    if let Some(path) = existing.filter(|path| Path::new(path).is_file()) { return Ok(path); }
-    let destination = state.paths.previews_dir.join(&quick_hash[..2]).join(format!("{quick_hash}.mp4"));
+        "SELECT path, quick_hash, preview_path FROM assets WHERE id=? AND media_kind='video'",
+    )
+    .bind(&id)
+    .fetch_optional(&db)
+    .await?
+    .ok_or("Video asset not found")?;
+    if let Some(path) = existing.filter(|path| Path::new(path).is_file()) {
+        return Ok(path);
+    }
+    let destination = state
+        .paths
+        .previews_dir
+        .join(&quick_hash[..2])
+        .join(format!("{quick_hash}.mp4"));
     media::create_video_preview(Path::new(&source), &destination).await?;
     let destination = destination.to_string_lossy().to_string();
     sqlx::query("UPDATE assets SET preview_path=?, updated_at=? WHERE id=?")
-        .bind(&destination).bind(Utc::now().to_rfc3339()).bind(id).execute(&db).await?;
+        .bind(&destination)
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(&db)
+        .await?;
     Ok(destination)
 }
 
 #[tauri::command]
-pub async fn rescan_source(id: String, app: AppHandle, state: State<'_, AppState>) -> AppResult<String> {
+pub async fn rescan_source(
+    id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
     let db = state.db().await;
-    let path = sqlx::query_scalar::<_, String>("SELECT path FROM source_roots WHERE id=?").bind(&id).fetch_optional(&db).await?
+    let path = sqlx::query_scalar::<_, String>("SELECT path FROM source_roots WHERE id=?")
+        .bind(&id)
+        .fetch_optional(&db)
+        .await?
         .ok_or("Source folder was not found")?;
-    sqlx::query("UPDATE source_roots SET status='scanning', updated_at=? WHERE id=?").bind(Utc::now().to_rfc3339()).bind(&id).execute(&db).await?;
+    sqlx::query("UPDATE source_roots SET status='scanning', updated_at=? WHERE id=?")
+        .bind(Utc::now().to_rfc3339())
+        .bind(&id)
+        .execute(&db)
+        .await?;
     scanner::start_scan(app, &state, id, PathBuf::from(path)).await
 }
 
@@ -254,39 +397,79 @@ pub fn report_frontend_error(message: String) {
 }
 
 #[tauri::command]
-pub async fn create_tag(name: String, color: String, state: State<'_, AppState>) -> AppResult<String> {
+pub async fn create_tag(
+    name: String,
+    color: String,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
     let name = name.trim();
-    if name.is_empty() || name.chars().count() > 40 { return Err("Tag names must contain 1 to 40 characters".into()); }
+    if name.is_empty() || name.chars().count() > 40 {
+        return Err("Tag names must contain 1 to 40 characters".into());
+    }
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
     sqlx::query("INSERT INTO tags(id, name, color, created_at, updated_at) VALUES(?, ?, ?, ?, ?)")
-        .bind(&id).bind(name).bind(color).bind(&now).bind(&now).execute(&state.db().await).await?;
+        .bind(&id)
+        .bind(name)
+        .bind(color)
+        .bind(&now)
+        .bind(&now)
+        .execute(&state.db().await)
+        .await?;
     Ok(id)
 }
 
 #[tauri::command]
-pub async fn update_tag(id: String, name: String, color: String, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn update_tag(
+    id: String,
+    name: String,
+    color: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     sqlx::query("UPDATE tags SET name=?, color=?, updated_at=? WHERE id=?")
-        .bind(name.trim()).bind(color).bind(Utc::now().to_rfc3339()).bind(id).execute(&state.db().await).await?;
+        .bind(name.trim())
+        .bind(color)
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(&state.db().await)
+        .await?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn delete_tag(id: String, state: State<'_, AppState>) -> AppResult<()> {
-    sqlx::query("DELETE FROM tags WHERE id=?").bind(id).execute(&state.db().await).await?;
+    sqlx::query("DELETE FROM tags WHERE id=?")
+        .bind(id)
+        .execute(&state.db().await)
+        .await?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn set_asset_tags(asset_ids: Vec<String>, tag_id: String, attached: bool, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn set_asset_tags(
+    asset_ids: Vec<String>,
+    tag_id: String,
+    attached: bool,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     let db = state.db().await;
     let mut transaction = db.begin().await?;
     for asset_id in asset_ids {
         if attached {
-            sqlx::query("INSERT OR IGNORE INTO asset_tags(asset_id, tag_id, created_at) VALUES(?, ?, ?)")
-                .bind(asset_id).bind(&tag_id).bind(Utc::now().to_rfc3339()).execute(&mut *transaction).await?;
+            sqlx::query(
+                "INSERT OR IGNORE INTO asset_tags(asset_id, tag_id, created_at) VALUES(?, ?, ?)",
+            )
+            .bind(asset_id)
+            .bind(&tag_id)
+            .bind(Utc::now().to_rfc3339())
+            .execute(&mut *transaction)
+            .await?;
         } else {
-            sqlx::query("DELETE FROM asset_tags WHERE asset_id=? AND tag_id=?").bind(asset_id).bind(&tag_id).execute(&mut *transaction).await?;
+            sqlx::query("DELETE FROM asset_tags WHERE asset_id=? AND tag_id=?")
+                .bind(asset_id)
+                .bind(&tag_id)
+                .execute(&mut *transaction)
+                .await?;
         }
     }
     transaction.commit().await?;
@@ -296,22 +479,37 @@ pub async fn set_asset_tags(asset_ids: Vec<String>, tag_id: String, attached: bo
 #[tauri::command]
 pub async fn create_collection(name: String, state: State<'_, AppState>) -> AppResult<String> {
     let name = name.trim();
-    if name.is_empty() || name.chars().count() > 80 { return Err("Collection names must contain 1 to 80 characters".into()); }
+    if name.is_empty() || name.chars().count() > 80 {
+        return Err("Collection names must contain 1 to 80 characters".into());
+    }
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
     sqlx::query("INSERT INTO collections(id, name, created_at, updated_at) VALUES(?, ?, ?, ?)")
-        .bind(&id).bind(name).bind(&now).bind(&now).execute(&state.db().await).await?;
+        .bind(&id)
+        .bind(name)
+        .bind(&now)
+        .bind(&now)
+        .execute(&state.db().await)
+        .await?;
     Ok(id)
 }
 
 #[tauri::command]
 pub async fn delete_collection(id: String, state: State<'_, AppState>) -> AppResult<()> {
-    sqlx::query("DELETE FROM collections WHERE id=?").bind(id).execute(&state.db().await).await?;
+    sqlx::query("DELETE FROM collections WHERE id=?")
+        .bind(id)
+        .execute(&state.db().await)
+        .await?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn set_collection_assets(collection_id: String, asset_ids: Vec<String>, attached: bool, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn set_collection_assets(
+    collection_id: String,
+    asset_ids: Vec<String>,
+    attached: bool,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     let db = state.db().await;
     let mut transaction = db.begin().await?;
     let now = Utc::now().to_rfc3339();
@@ -323,48 +521,90 @@ pub async fn set_collection_assets(collection_id: String, asset_ids: Vec<String>
                 .bind(&collection_id).bind(asset_id).bind(position).bind(&now).execute(&mut *transaction).await?;
         } else {
             sqlx::query("DELETE FROM collection_items WHERE collection_id=? AND asset_id=?")
-                .bind(&collection_id).bind(&asset_id).execute(&mut *transaction).await?;
-            sqlx::query("UPDATE collections SET cover_asset_id=NULL WHERE id=? AND cover_asset_id=?")
-                .bind(&collection_id).bind(asset_id).execute(&mut *transaction).await?;
+                .bind(&collection_id)
+                .bind(&asset_id)
+                .execute(&mut *transaction)
+                .await?;
+            sqlx::query(
+                "UPDATE collections SET cover_asset_id=NULL WHERE id=? AND cover_asset_id=?",
+            )
+            .bind(&collection_id)
+            .bind(asset_id)
+            .execute(&mut *transaction)
+            .await?;
         }
     }
     sqlx::query("UPDATE collections SET updated_at=? WHERE id=?")
-        .bind(&now).bind(&collection_id).execute(&mut *transaction).await?;
+        .bind(&now)
+        .bind(&collection_id)
+        .execute(&mut *transaction)
+        .await?;
     transaction.commit().await?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn set_collection_cover(collection_id: String, asset_id: String, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn set_collection_cover(
+    collection_id: String,
+    asset_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     let db = state.db().await;
     let member = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM collection_items ci JOIN assets a ON a.id=ci.asset_id
-         WHERE ci.collection_id=? AND ci.asset_id=? AND a.status='ready'"
-    ).bind(&collection_id).bind(&asset_id).fetch_one(&db).await?;
-    if member == 0 { return Err("Collection covers must be selected from the collection".into()); }
+         WHERE ci.collection_id=? AND ci.asset_id=? AND a.status='ready'",
+    )
+    .bind(&collection_id)
+    .bind(&asset_id)
+    .fetch_one(&db)
+    .await?;
+    if member == 0 {
+        return Err("Collection covers must be selected from the collection".into());
+    }
     sqlx::query("UPDATE collections SET cover_asset_id=?, updated_at=? WHERE id=?")
-        .bind(asset_id).bind(Utc::now().to_rfc3339()).bind(collection_id).execute(&db).await?;
+        .bind(asset_id)
+        .bind(Utc::now().to_rfc3339())
+        .bind(collection_id)
+        .execute(&db)
+        .await?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn clear_collection_cover(collection_id: String, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn clear_collection_cover(
+    collection_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     sqlx::query("UPDATE collections SET cover_asset_id=NULL, updated_at=? WHERE id=?")
-        .bind(Utc::now().to_rfc3339()).bind(collection_id).execute(&state.db().await).await?;
+        .bind(Utc::now().to_rfc3339())
+        .bind(collection_id)
+        .execute(&state.db().await)
+        .await?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn record_asset_viewed(id: String, state: State<'_, AppState>) -> AppResult<()> {
     sqlx::query("UPDATE assets SET last_viewed_at=? WHERE id=? AND status='ready'")
-        .bind(Utc::now().to_rfc3339()).bind(id).execute(&state.db().await).await?;
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(&state.db().await)
+        .await?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn update_asset_note(id: String, note: String, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn update_asset_note(
+    id: String,
+    note: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     sqlx::query("UPDATE assets SET note=?, updated_at=? WHERE id=?")
-        .bind(note).bind(Utc::now().to_rfc3339()).bind(id).execute(&state.db().await).await?;
+        .bind(note)
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(&state.db().await)
+        .await?;
     Ok(())
 }
 
@@ -373,14 +613,28 @@ async fn hash_matches(left: &Path, right: &Path) -> AppResult<bool> {
 }
 
 #[tauri::command]
-pub async fn move_asset(id: String, destination: String, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn move_asset(
+    id: String,
+    destination: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     let db = state.db().await;
-    let from = sqlx::query_scalar::<_, String>("SELECT path FROM assets WHERE id=?").bind(&id).fetch_optional(&db).await?.ok_or("Asset not found")?;
+    let from = sqlx::query_scalar::<_, String>("SELECT path FROM assets WHERE id=?")
+        .bind(&id)
+        .fetch_optional(&db)
+        .await?
+        .ok_or("Asset not found")?;
     let from_path = PathBuf::from(&from);
     let to_path = PathBuf::from(&destination);
-    if to_path.exists() { return Err("The destination already exists".into()); }
-    if media::media_kind(&to_path).is_none() { return Err("The destination must keep a supported extension".into()); }
-    if let Some(parent) = to_path.parent() { tokio::fs::create_dir_all(parent).await?; }
+    if to_path.exists() {
+        return Err("The destination already exists".into());
+    }
+    if media::media_kind(&to_path).is_none() {
+        return Err("The destination must keep a supported extension".into());
+    }
+    if let Some(parent) = to_path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
     let operation_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
     sqlx::query("INSERT INTO file_operations(id, kind, asset_id, from_path, to_path, status, created_at) VALUES(?, 'move', ?, ?, ?, 'pending', ?)")
@@ -394,7 +648,9 @@ pub async fn move_asset(id: String, destination: String, state: State<'_, AppSta
                 Err(AppError::Message("Copied file verification failed".into()))
             } else {
                 let source = from_path.clone();
-                tokio::task::spawn_blocking(move || trash::delete(source)).await.map_err(|e| AppError::Message(e.to_string()))?
+                tokio::task::spawn_blocking(move || trash::delete(source))
+                    .await
+                    .map_err(|e| AppError::Message(e.to_string()))?
                     .map_err(|e| AppError::Message(e.to_string()))?;
                 Ok(())
             }
@@ -402,16 +658,34 @@ pub async fn move_asset(id: String, destination: String, state: State<'_, AppSta
     };
     match move_result {
         Ok(()) => {
-            let filename = to_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let filename = to_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             sqlx::query("UPDATE assets SET path=?, filename=?, updated_at=? WHERE id=?")
-                .bind(&destination).bind(filename).bind(Utc::now().to_rfc3339()).bind(&id).execute(&db).await?;
+                .bind(&destination)
+                .bind(filename)
+                .bind(Utc::now().to_rfc3339())
+                .bind(&id)
+                .execute(&db)
+                .await?;
             sqlx::query("UPDATE file_operations SET status='complete', completed_at=? WHERE id=?")
-                .bind(Utc::now().to_rfc3339()).bind(operation_id).execute(&db).await?;
+                .bind(Utc::now().to_rfc3339())
+                .bind(operation_id)
+                .execute(&db)
+                .await?;
             Ok(())
         }
         Err(error) => {
-            sqlx::query("UPDATE file_operations SET status='error', error=?, completed_at=? WHERE id=?")
-                .bind(error.to_string()).bind(Utc::now().to_rfc3339()).bind(operation_id).execute(&db).await?;
+            sqlx::query(
+                "UPDATE file_operations SET status='error', error=?, completed_at=? WHERE id=?",
+            )
+            .bind(error.to_string())
+            .bind(Utc::now().to_rfc3339())
+            .bind(operation_id)
+            .execute(&db)
+            .await?;
             Err(error)
         }
     }
@@ -425,13 +699,29 @@ pub async fn undo_last_file_operation(state: State<'_, AppState>) -> AppResult<(
          WHERE status='complete' AND kind='move' AND to_path IS NOT NULL ORDER BY completed_at DESC LIMIT 1"
     ).fetch_optional(&db).await?.ok_or("There is no file operation to undo")?;
     let (operation_id, asset_id, from, to) = row;
-    if Path::new(&from).exists() || !Path::new(&to).exists() { return Err("The file can no longer be moved back safely".into()); }
-    if let Some(parent) = Path::new(&from).parent() { tokio::fs::create_dir_all(parent).await?; }
+    if Path::new(&from).exists() || !Path::new(&to).exists() {
+        return Err("The file can no longer be moved back safely".into());
+    }
+    if let Some(parent) = Path::new(&from).parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
     tokio::fs::rename(&to, &from).await?;
-    let filename = Path::new(&from).file_name().unwrap_or_default().to_string_lossy().to_string();
+    let filename = Path::new(&from)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     sqlx::query("UPDATE assets SET path=?, filename=?, updated_at=? WHERE id=?")
-        .bind(&from).bind(filename).bind(Utc::now().to_rfc3339()).bind(asset_id).execute(&db).await?;
-    sqlx::query("UPDATE file_operations SET status='undone' WHERE id=?").bind(operation_id).execute(&db).await?;
+        .bind(&from)
+        .bind(filename)
+        .bind(Utc::now().to_rfc3339())
+        .bind(asset_id)
+        .execute(&db)
+        .await?;
+    sqlx::query("UPDATE file_operations SET status='undone' WHERE id=?")
+        .bind(operation_id)
+        .execute(&db)
+        .await?;
     Ok(())
 }
 
@@ -439,30 +729,56 @@ pub async fn undo_last_file_operation(state: State<'_, AppState>) -> AppResult<(
 pub async fn trash_assets(ids: Vec<String>, state: State<'_, AppState>) -> AppResult<()> {
     let db = state.db().await;
     for id in ids {
-        let path = sqlx::query_scalar::<_, String>("SELECT path FROM assets WHERE id=?").bind(&id).fetch_optional(&db).await?.ok_or("Asset not found")?;
+        let path = sqlx::query_scalar::<_, String>("SELECT path FROM assets WHERE id=?")
+            .bind(&id)
+            .fetch_optional(&db)
+            .await?
+            .ok_or("Asset not found")?;
         let owned = PathBuf::from(path);
-        tokio::task::spawn_blocking(move || trash::delete(owned)).await.map_err(|e| AppError::Message(e.to_string()))?
+        tokio::task::spawn_blocking(move || trash::delete(owned))
+            .await
+            .map_err(|e| AppError::Message(e.to_string()))?
             .map_err(|e| AppError::Message(e.to_string()))?;
         let updated_at = Utc::now().to_rfc3339();
         sqlx::query("UPDATE assets SET status='missing', updated_at=? WHERE id=?")
-            .bind(&updated_at).bind(&id).execute(&db).await?;
-        sqlx::query("UPDATE collections SET cover_asset_id=NULL, updated_at=? WHERE cover_asset_id=?")
-            .bind(updated_at).bind(id).execute(&db).await?;
+            .bind(&updated_at)
+            .bind(&id)
+            .execute(&db)
+            .await?;
+        sqlx::query(
+            "UPDATE collections SET cover_asset_id=NULL, updated_at=? WHERE cover_asset_id=?",
+        )
+        .bind(updated_at)
+        .bind(id)
+        .execute(&db)
+        .await?;
     }
     Ok(())
 }
 
 #[tauri::command]
 pub async fn reveal_asset(id: String, state: State<'_, AppState>) -> AppResult<()> {
-    let path = sqlx::query_scalar::<_, String>("SELECT path FROM assets WHERE id=?").bind(id).fetch_optional(&state.db().await).await?.ok_or("Asset not found")?;
-    std::process::Command::new("explorer.exe").arg(format!("/select,{path}")).spawn()?;
+    let path = sqlx::query_scalar::<_, String>("SELECT path FROM assets WHERE id=?")
+        .bind(id)
+        .fetch_optional(&state.db().await)
+        .await?
+        .ok_or("Asset not found")?;
+    std::process::Command::new("explorer.exe")
+        .arg(format!("/select,{path}"))
+        .spawn()?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn open_asset(id: String, state: State<'_, AppState>) -> AppResult<()> {
-    let path = sqlx::query_scalar::<_, String>("SELECT path FROM assets WHERE id=?").bind(id).fetch_optional(&state.db().await).await?.ok_or("Asset not found")?;
-    std::process::Command::new("cmd.exe").args(["/C", "start", "", &path]).spawn()?;
+    let path = sqlx::query_scalar::<_, String>("SELECT path FROM assets WHERE id=?")
+        .bind(id)
+        .fetch_optional(&state.db().await)
+        .await?
+        .ok_or("Asset not found")?;
+    std::process::Command::new("cmd.exe")
+        .args(["/C", "start", "", &path])
+        .spawn()?;
     Ok(())
 }
 
@@ -471,23 +787,42 @@ pub async fn create_backup(state: State<'_, AppState>) -> AppResult<String> {
     let db = state.db().await;
     let filename = format!("tagloom-{}.db", Utc::now().format("%Y%m%d-%H%M%S"));
     let path = state.paths.backups_dir.join(filename);
-    let escaped = path.to_string_lossy().replace('\\', "/").replace('\'', "''");
-    sqlx::query(&format!("VACUUM INTO '{escaped}'")).execute(&db).await?;
-    let mut backups = std::fs::read_dir(&state.paths.backups_dir)?.filter_map(Result::ok).collect::<Vec<_>>();
+    let escaped = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .replace('\'', "''");
+    sqlx::query(&format!("VACUUM INTO '{escaped}'"))
+        .execute(&db)
+        .await?;
+    let mut backups = std::fs::read_dir(&state.paths.backups_dir)?
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>();
     backups.sort_by_key(|entry| entry.metadata().and_then(|m| m.modified()).ok());
     let excess = backups.len().saturating_sub(7);
-    for entry in backups.into_iter().take(excess) { let _ = std::fs::remove_file(entry.path()); }
+    for entry in backups.into_iter().take(excess) {
+        let _ = std::fs::remove_file(entry.path());
+    }
     Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-pub async fn restore_backup(path: String, app: AppHandle, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn restore_backup(
+    path: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     let backup = PathBuf::from(path);
-    if !backup.is_file() { return Err("Backup file not found".into()); }
+    if !backup.is_file() {
+        return Err("Backup file not found".into());
+    }
     let check = AppState::connect(&backup).await?;
-    let integrity: String = sqlx::query_scalar("PRAGMA integrity_check").fetch_one(&check).await?;
+    let integrity: String = sqlx::query_scalar("PRAGMA integrity_check")
+        .fetch_one(&check)
+        .await?;
     check.close().await;
-    if integrity != "ok" { return Err("Backup integrity check failed".into()); }
+    if integrity != "ok" {
+        return Err("Backup integrity check failed".into());
+    }
     let pool = state.pool.read().await.clone();
     pool.close().await;
     tokio::fs::copy(backup, &state.paths.db_path).await?;
@@ -496,13 +831,19 @@ pub async fn restore_backup(path: String, app: AppHandle, state: State<'_, AppSt
 
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> AppResult<Vec<Setting>> {
-    Ok(sqlx::query_as::<_, Setting>("SELECT key, value FROM settings ORDER BY key").fetch_all(&state.db().await).await?)
+    Ok(
+        sqlx::query_as::<_, Setting>("SELECT key, value FROM settings ORDER BY key")
+            .fetch_all(&state.db().await)
+            .await?,
+    )
 }
 
 #[tauri::command]
 pub async fn set_setting(key: String, value: String, state: State<'_, AppState>) -> AppResult<()> {
     const ALLOWED: &[&str] = &["language", "theme"];
-    if !ALLOWED.contains(&key.as_str()) { return Err("Unknown setting".into()); }
+    if !ALLOWED.contains(&key.as_str()) {
+        return Err("Unknown setting".into());
+    }
     sqlx::query("INSERT INTO settings(key, value, updated_at) VALUES(?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at")
         .bind(key).bind(value).bind(Utc::now().to_rfc3339()).execute(&state.db().await).await?;
     Ok(())
@@ -510,11 +851,57 @@ pub async fn set_setting(key: String, value: String, state: State<'_, AppState>)
 
 #[cfg(test)]
 mod tests {
-    use super::normalized;
+    use super::{normalized, Tag, BOOTSTRAP_TAGS_SQL};
+    use sqlx::SqlitePool;
     use std::path::Path;
 
     #[test]
     fn normalizes_windows_paths_for_comparison() {
-        assert_eq!(normalized(Path::new("C:/Media/Photos/")), "c:\\media\\photos");
+        assert_eq!(
+            normalized(Path::new("C:/Media/Photos/")),
+            "c:\\media\\photos"
+        );
+    }
+
+    #[tokio::test]
+    async fn bootstrap_tag_counts_only_include_ready_assets() {
+        let db = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE tags(id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query("CREATE TABLE assets(id TEXT PRIMARY KEY, status TEXT NOT NULL)")
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE asset_tags(asset_id TEXT NOT NULL, tag_id TEXT NOT NULL)")
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO tags(id, name, color) VALUES('tag', 'Reference', '#ee6859')")
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO assets(id, status) VALUES('ready', 'ready'), ('trashed', 'missing')",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO asset_tags(asset_id, tag_id) VALUES('ready', 'tag'), ('trashed', 'tag')",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+
+        let tag = sqlx::query_as::<_, Tag>(BOOTSTRAP_TAGS_SQL)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+
+        assert_eq!(tag.asset_count, 1);
     }
 }

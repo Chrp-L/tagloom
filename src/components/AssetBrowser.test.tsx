@@ -365,7 +365,7 @@ describe("asset browser stable rendering", () => {
     await waitFor(() => expect(document.querySelectorAll("[data-asset-id]")).toHaveLength(4));
     fireEvent.contextMenu(document.querySelector<HTMLElement>('[data-asset-id="a"]')!, { button: 2, clientX: 30, clientY: 30 });
     await waitFor(() => expect(screen.getByRole("menu")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("menuitem", { name: /setCollectionCover|设为当前分组封面/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /setCollectionCover|Set as current context cover|设为当前上下文封面/ }));
     expect(onSetCollectionCover).toHaveBeenCalledWith("collection-a", "a");
     view.rerender(<AssetBrowser {...browserProps} collectionContext={{ id: "collection-a" }} selectionMode="batch" onSetCollectionCover={onSetCollectionCover} />);
     expect(document.querySelector(".assetContextMenu")).toBeNull();

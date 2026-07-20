@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tagloom Dev",
+  "identifier": "app.tagloom.desktop.dev",
+  "app": {
+    "windows": [
+      {
+        "title": "Tagloom Dev",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1100,
+        "minHeight": 680,
+        "decorations": false,
+        "shadow": true,
+        "resizable": true,
+        "backgroundColor": "#f1f2ef"
+      }
+    ]
+  }
+}

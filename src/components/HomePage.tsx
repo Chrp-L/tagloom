@@ -1,11 +1,11 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronDown, ChevronRight, FolderPlus, ImageOff, Images, Layers3, Play, Video } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderPlus, ImageOff, Layers3, Play } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { mediaUrl } from "../api";
 import { formatDate, formatDuration } from "../lib/format";
 import type { Asset, HomeSnapshot, JobProgress } from "../types";
-import { HomeLoomWidget, resolveHomeLoomState } from "./HomeLoomWidget";
+import { HomeWorkbench } from "./HomeWorkbench";
 
 type RecentKind = "viewed" | "imported" | "modified";
 
@@ -13,12 +13,13 @@ interface Props {
   snapshot?: HomeSnapshot;
   loading: boolean;
   error?: string;
-  summary?: { total: number; images: number; videos: number; collections: number };
+  hasSources: boolean;
   job?: JobProgress;
   focusedAssetId?: string;
   onOpenCollection: (id: string) => void;
   onViewCollections: () => void;
   onCreateCollection: () => void;
+  onAddSource: () => void;
   onFocus: (asset?: Asset) => void;
   onPreview: (asset: Asset, context: Asset[]) => void;
 }
@@ -45,26 +46,17 @@ export function HomePage(props: Props) {
     return props.snapshot.recentModified;
   }, [props.snapshot, recentKind]);
   const visibleRecent = recentAssets.slice(0, 5);
-  const loomState = resolveHomeLoomState(props.job);
-  const loomStatus = loomState === "scanning"
-    ? t("scanning", { completed: props.job?.completed ?? 0, total: props.job?.total || "—", defaultValue: "正在整理 {{completed}} / {{total}}" })
-    : t(loomState === "paused" ? "loomPaused" : loomState === "error" ? "loomError" : "indexReady", { defaultValue: loomState === "paused" ? "扫描已暂停" : loomState === "error" ? "扫描出现问题" : "已更新" });
   useEffect(() => { localStorage.setItem(HOME_SECTION_STATE_KEY, JSON.stringify(sections)); }, [sections]);
   const toggleSection = (section: "collections" | "recent") => setSections((state) => ({ ...state, [section]: !state[section] }));
 
   return (
     <div className="homePage" onClick={(event) => { if (!(event.target as Element).closest("[data-home-action]")) props.onFocus(); }}>
-      <section className="homeDashboardPulse" aria-label={t("home")}>
-        <div className="homePulseLead"><HomeLoomWidget job={props.job} /><div className="homePulseCopy"><strong>{t("homeLoom", { defaultValue: "素材织机" })}</strong><small>{loomStatus}</small></div></div>
-        <div className="homePulseMetric"><Images size={15} aria-hidden="true" /><span>{t("allItems")}</span><strong>{props.summary?.total ?? 0}</strong></div>
-        <div className="homePulseMetric"><Images size={15} aria-hidden="true" /><span>{t("images")}</span><strong>{props.summary?.images ?? 0}</strong></div>
-        <div className="homePulseMetric"><Video size={15} aria-hidden="true" /><span>{t("videos")}</span><strong>{props.summary?.videos ?? 0}</strong></div>
-        <div className="homePulseMetric"><Layers3 size={15} aria-hidden="true" /><span>{t("collections")}</span><strong>{props.summary?.collections ?? props.snapshot?.collections.length ?? 0}</strong></div>
-      </section>
+      <HomeWorkbench snapshot={props.snapshot} loading={props.loading} error={props.error} hasSources={props.hasSources} job={props.job} focusedAssetId={props.focusedAssetId}
+        onOpenCollection={props.onOpenCollection} onCreateCollection={props.onCreateCollection} onAddSource={props.onAddSource} onFocus={props.onFocus} onPreview={props.onPreview} />
       <section className="homeSection collectionHomeSection">
         <div className="homeSectionHeading">
           <button className="homeSectionToggle tactile" type="button" data-home-action aria-expanded={sections.collections} aria-label={t("myCollections")} onClick={() => toggleSection("collections")}>
-            <span className="homeCable" aria-hidden="true"><i /><b /></span><h2>{t("myCollections")}</h2>{sections.collections ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            <h2>{t("myCollections")}</h2>{sections.collections ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
           </button>
           <div className="homeSectionActions">
             <button className="textButton tactile" data-home-action onClick={props.onViewCollections}>{t("viewAll")}</button>
@@ -77,11 +69,10 @@ export function HomePage(props: Props) {
               <div className="homeCollectionGrid">
                 {props.snapshot.collections.slice(0, 6).map((collection) => <button key={collection.id} className="homeCollectionCard tactile" data-home-action onClick={() => props.onOpenCollection(collection.id)}>
                   <span className="homeCollectionCover">
-                    {collection.coverAsset?.thumbnailPath ? <motion.img key={collection.coverAsset.thumbnailPath} src={mediaUrl(collection.coverAsset.thumbnailPath)} alt="" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }} /> : <span className="homeCoverPlaceholder" aria-hidden="true"><i /><i /><b /></span>}
+                    {collection.coverAsset?.thumbnailPath ? <motion.img key={collection.coverAsset.thumbnailPath} src={mediaUrl(collection.coverAsset.thumbnailPath)} alt="" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }} /> : <span className="homeCoverPlaceholder" aria-hidden="true"><Layers3 size={24} /></span>}
                     {collection.coverAsset?.mediaKind === "video" && <span className="homeCoverVideo"><Play size={11} fill="currentColor" /></span>}
                   </span>
                   <span className="homeCollectionMeta"><strong>{collection.name}</strong><small>{t("items", { count: collection.assetCount })}</small></span>
-                  <span className="homeCardCable" aria-hidden="true"><i /><b /></span>
                 </button>)}
               </div>
             ) : <button className="homeEmptyCollection tactile" data-home-action onClick={props.onCreateCollection}><Layers3 size={24} /><strong>{t("newCollection")}</strong></button>}
@@ -92,7 +83,7 @@ export function HomePage(props: Props) {
       <section className="homeSection recentHomeSection">
         <div className="homeSectionHeading recentHeading">
           <button className="homeSectionToggle tactile" type="button" data-home-action aria-expanded={sections.recent} aria-label={t("recentAssets")} onClick={() => toggleSection("recent")}>
-            <span className="homeCable recent" aria-hidden="true"><i /><b /></span><h2>{t("recentAssets")}</h2>{sections.recent ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            <h2>{t("recentAssets")}</h2>{sections.recent ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
           </button>
           <div className="homeRecentTabs" role="tablist" aria-label={t("recentAssets")}>
             {(["viewed", "imported", "modified"] as RecentKind[]).map((kind) => <button key={kind} type="button" role="tab" data-home-action aria-selected={recentKind === kind} onClick={() => setRecentKind(kind)}>{recentKind === kind && <motion.span layoutId="home-recent-tab" className="homeRecentTabPlate" />}<span>{t(kind === "viewed" ? "recentViewed" : kind === "imported" ? "recentImported" : "recentModified")}</span></button>)}

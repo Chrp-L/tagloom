@@ -36,7 +36,7 @@ export function Toolbar(props: ToolbarProps) {
   return (
     <header className="workspaceHeader">
       <div className="titleLine" data-tauri-drag-region onDoubleClick={(event) => { if (!isInteractiveWindowTarget(event.target)) void toggleCurrentWindowMaximize(); }}>
-        <div className="titleIdentity" data-tauri-drag-region><div className="titleCopy" data-tauri-drag-region><h1 data-tauri-drag-region>{props.title}</h1><span data-tauri-drag-region>{t("items", { count: props.count })}</span></div><SignalLoom cue={props.eventCue} /></div>
+        <div className="titleIdentity" data-tauri-drag-region><div className="titleCopy" data-tauri-drag-region><h1 data-tauri-drag-region>{props.title}</h1>{!homeMode && <span data-tauri-drag-region>{t("items", { count: props.count })}</span>}</div><SignalLoom cue={props.eventCue} /></div>
         <button className="iconButton tactile" title={t("settings")} onClick={props.onSettings}><Settings2 size={18} /></button>
       </div>
       <div className="toolbarLine">

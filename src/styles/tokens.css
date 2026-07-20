@@ -1,0 +1,47 @@
+:root {
+  font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+  color: #202422;
+  background: #f1f2ef;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  letter-spacing: 0;
+  --bg: #f1f2ef;
+  --surface: #f8f9f6;
+  --surface-strong: #ffffff;
+  --surface-soft: #e8ebe7;
+  --line: #d8dcd7;
+  --line-strong: #bdc4be;
+  --text: #202422;
+  --text-soft: #66706a;
+  --text-faint: #8b938e;
+  --accent: #ed6758;
+  --accent-soft: #fbe3df;
+  --accent-deep: #bd483d;
+  --green: #3f8f74;
+  --signal-gold: #d4a43d;
+  --danger: #c14d44;
+  --shadow: 0 12px 34px rgba(37, 45, 41, 0.14);
+  --fast: 120ms;
+  --state: 170ms;
+  --layout: 230ms;
+}
+
+:root[data-theme="dark"] {
+  color: #e7eae7;
+  background: #171a18;
+  --bg: #171a18;
+  --surface: #1e2220;
+  --surface-strong: #252a27;
+  --surface-soft: #2b302d;
+  --line: #343a36;
+  --line-strong: #4a524d;
+  --text: #e7eae7;
+  --text-soft: #a2aaa5;
+  --text-faint: #767f79;
+  --accent: #f07869;
+  --accent-soft: #4b2c29;
+  --accent-deep: #ff9a8d;
+  --green: #61aa90;
+  --danger: #ef7c72;
+  --shadow: 0 16px 42px rgba(0, 0, 0, 0.32);
+}
