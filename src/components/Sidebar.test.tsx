@@ -1,3 +1,4 @@
+import * as Tooltip from "@radix-ui/react-tooltip";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
@@ -56,21 +57,21 @@ describe("sidebar entity deletion menus", () => {
   it("requests source removal from the source menu", async () => {
     const callbacks = renderSidebar();
     openActions("Source A");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove source" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: i18n.t("removeSource") }));
     expect(callbacks.onRemoveSource).toHaveBeenCalledWith(data.sources[0]);
   });
 
   it("requests collection deletion from the collection menu", async () => {
     const callbacks = renderSidebar();
     openActions("Collection A");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete collection" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: i18n.t("deleteCollection") }));
     expect(callbacks.onDeleteCollection).toHaveBeenCalledWith(data.collections[0]);
   });
 
   it("requests tag deletion from the tag menu", async () => {
     const callbacks = renderSidebar();
     openActions("Tag A");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete tag" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: i18n.t("deleteTag") }));
     expect(callbacks.onDeleteTag).toHaveBeenCalledWith(data.tags[0]);
   });
 });
@@ -90,13 +91,29 @@ describe("sidebar active motion plate", () => {
   });
 });
 
-describe("sidebar cable marks", () => {
-  it("renders one static cable mark for each expandable library section", () => {
+describe("sidebar information hierarchy", () => {
+  it("orders expanded navigation as workspace, library, collections, tags, and sources", () => {
     renderSidebar();
-    expect(document.querySelectorAll(".sectionCableMark")).toHaveLength(3);
-    expect(document.querySelector(".sectionCableMark.sources")).not.toBeNull();
-    expect(document.querySelector(".sectionCableMark.collections")).not.toBeNull();
-    expect(document.querySelector(".sectionCableMark.tags")).not.toBeNull();
+    const sections = Array.from(document.querySelectorAll(".sidebarScroll > .navSection"));
+    expect(sections).toHaveLength(5);
+    expect(sections.map((section) => section.textContent)).toEqual([
+      expect.stringContaining(i18n.t("home")),
+      expect.stringContaining(i18n.t("allItems")),
+      expect.stringContaining("Collection A"),
+      expect.stringContaining("Tag A"),
+      expect.stringContaining("Source A"),
+    ]);
+  });
+
+  it("orders collapsed navigation controls by the same semantic hierarchy", () => {
+    renderSidebar({ kind: "home" }, true);
+    const labels = Array.from(document.querySelectorAll<HTMLButtonElement>(".railNav .railButton"), (button) => button.getAttribute("aria-label"));
+    expect(labels).toEqual(["home", "allItems", "images", "videos", "collections", "tags", "folders"].map((key) => i18n.t(key)));
+  });
+
+  it("does not render decorative section cable marks", () => {
+    renderSidebar();
+    expect(document.querySelector(".sectionCableMark")).toBeNull();
   });
 });
 
@@ -125,4 +142,3 @@ describe("library entity delete confirmation", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });
-import * as Tooltip from "@radix-ui/react-tooltip";
