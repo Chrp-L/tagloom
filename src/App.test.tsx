@@ -12,7 +12,7 @@ describe("Tagloom shell", () => {
     render(<QueryClientProvider client={new QueryClient()}><App /></QueryClientProvider>);
     expect(await screen.findByText("Tagloom")).toBeInTheDocument();
     expect(await screen.findByPlaceholderText(/搜索|Search/)).toBeInTheDocument();
-    expect(await screen.findByText(/我的相册组|My albums/)).toBeInTheDocument();
+    expect(await screen.findByText(/我的上下文|My contexts/)).toBeInTheDocument();
   });
 
   it("enters an explicit zero-item batch mode from the toolbar", async () => {

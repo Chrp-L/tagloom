@@ -3,13 +3,16 @@
 @media (max-width: 1220px) {
   .appShell { --sidebar-width: 218px; --inspector-width: 280px; grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--inspector-width); }
   .appShell.sidebarCollapsed { grid-template-columns: 56px minmax(0, 1fr) 280px; }
+  .homeWorkbench { grid-template-columns: minmax(0, 1fr); }
+  .homeWorkbenchContext { border-right: 0; border-bottom: 1px solid var(--line); }
   .homeCollectionGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .homeRecentGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .homeDashboardPulse { grid-template-columns: minmax(200px, 1.1fr) repeat(4, minmax(76px, 1fr)); }
   .assetListItem { grid-template-columns: 20px 55px minmax(150px, 1.7fr) 65px 80px 50px; }
   .assetListItem > span:nth-of-type(4) { display: none; }
 }
 @media (max-width: 820px) {
-  .homeDashboardPulse { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .homePulseLead { grid-column: 1 / -1; min-height: 64px; flex-direction: row; align-items: center; gap: 10px; border-right: 0; border-bottom: 1px solid var(--line); }.homePulseCopy small { margin-left: 0; }
+  .homeWorkbenchContextAction { grid-template-columns: minmax(0, 1fr); }
+  .homeWorkbenchCover { min-height: 160px; }
+  .homeWorkbenchContextCopy { border-top: 1px solid var(--line); border-left: 0; }
+  .homeRecentGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
