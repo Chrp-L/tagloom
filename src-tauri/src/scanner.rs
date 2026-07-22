@@ -3,6 +3,7 @@ use crate::{
     media,
     models::JobProgress,
     state::{AppState, JobControl},
+    video_preview,
 };
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
@@ -237,10 +238,18 @@ async fn index_file(
         let _ = media::create_video_thumbnail(file, &thumb).await;
         (w.map(i64::from), h.map(i64::from), d)
     };
-    let id = sqlx::query_scalar::<_, String>("SELECT id FROM assets WHERE path=?")
-        .bind(file.to_string_lossy().to_string())
-        .fetch_optional(pool)
-        .await?
+    let existing = sqlx::query_as::<_, (String, String, Option<String>)>(
+        "SELECT id, quick_hash, preview_path FROM assets WHERE path=?",
+    )
+    .bind(file.to_string_lossy().to_string())
+    .fetch_optional(pool)
+    .await?;
+    let stale_preview = existing
+        .as_ref()
+        .filter(|(_, old_hash, _)| old_hash != &hash)
+        .and_then(|(_, _, preview)| preview.clone());
+    let id = existing
+        .map(|(id, _, _)| id)
         .unwrap_or_else(|| Uuid::new_v4().to_string());
     let filename = file
         .file_name()
@@ -259,10 +268,17 @@ async fn index_file(
          VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?)
          ON CONFLICT(path) DO UPDATE SET source_id=excluded.source_id, filename=excluded.filename, extension=excluded.extension,
          media_kind=excluded.media_kind, byte_size=excluded.byte_size, modified_at=excluded.modified_at, captured_at=COALESCE(excluded.captured_at, assets.captured_at), width=excluded.width,
-         height=excluded.height, duration_ms=excluded.duration_ms, quick_hash=excluded.quick_hash,
+         height=excluded.height, duration_ms=excluded.duration_ms,
+         preview_path=CASE WHEN assets.quick_hash != excluded.quick_hash THEN NULL ELSE assets.preview_path END,
+         preview_byte_size=CASE WHEN assets.quick_hash != excluded.quick_hash THEN NULL ELSE assets.preview_byte_size END,
+         preview_last_used_at=CASE WHEN assets.quick_hash != excluded.quick_hash THEN NULL ELSE assets.preview_last_used_at END,
+         quick_hash=excluded.quick_hash,
          thumbnail_path=COALESCE(excluded.thumbnail_path, assets.thumbnail_path), status='ready', updated_at=excluded.updated_at"
-    ).bind(id).bind(source_id).bind(file.to_string_lossy().to_string()).bind(filename).bind(ext).bind(kind)
-     .bind(size as i64).bind(modified).bind(captured_at).bind(width).bind(height).bind(duration).bind(hash).bind(thumb_value)
+    ).bind(&id).bind(source_id).bind(file.to_string_lossy().to_string()).bind(filename).bind(ext).bind(kind)
+     .bind(size as i64).bind(modified).bind(captured_at).bind(width).bind(height).bind(duration).bind(&hash).bind(thumb_value)
      .bind(&now).bind(&now).execute(pool).await?;
+    if let Some(stale_preview) = stale_preview {
+        video_preview::remove_if_unreferenced(pool, Path::new(&stale_preview)).await?;
+    }
     Ok(())
 }

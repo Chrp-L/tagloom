@@ -3,11 +3,11 @@ use crate::{
     media,
     models::{
         Asset, AssetPage, AssetQuery, AssetRow, Collection, CollectionHomeCard, HomeSnapshot,
-        JobProgress, JobRow, LibraryBootstrap, Setting, SourceRoot, Tag,
+        JobProgress, JobRow, LibraryBootstrap, Setting, SourceRoot, Tag, VideoPreviewCacheStatus,
     },
     scanner,
     state::AppState,
-    watcher,
+    video_preview, watcher,
 };
 use chrono::Utc;
 use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool};
@@ -15,7 +15,7 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
 #[derive(FromRow)]
@@ -303,6 +303,15 @@ pub async fn add_source(
     let now = Utc::now().to_rfc3339();
     sqlx::query("INSERT INTO source_roots(id, path, name, status, created_at, updated_at) VALUES(?, ?, ?, 'scanning', ?, ?)")
         .bind(&id).bind(canonical.to_string_lossy().to_string()).bind(name).bind(&now).bind(&now).execute(&db).await?;
+    if let Err(error) = app.asset_protocol_scope().allow_directory(&canonical, true) {
+        let _ = sqlx::query("DELETE FROM source_roots WHERE id=?")
+            .bind(&id)
+            .execute(&db)
+            .await;
+        return Err(AppError::Message(format!(
+            "Selected folder could not be authorized: {error}"
+        )));
+    }
     if let Err(error) = watcher::attach(app.clone(), &state, id.clone(), &canonical) {
         tracing::warn!(error = %error, "source watcher could not be started");
     }
@@ -311,42 +320,98 @@ pub async fn add_source(
 }
 
 #[tauri::command]
-pub async fn remove_source(id: String, state: State<'_, AppState>) -> AppResult<()> {
+pub async fn remove_source(
+    id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     watcher::detach(&state, &id);
-    sqlx::query("DELETE FROM source_roots WHERE id=?")
-        .bind(id)
-        .execute(&state.db().await)
+    let db = state.db().await;
+    let path = sqlx::query_scalar::<_, String>("SELECT path FROM source_roots WHERE id=?")
+        .bind(&id)
+        .fetch_optional(&db)
         .await?;
+    let previews = sqlx::query_as::<_, (String, Option<String>)>(
+        "SELECT id, preview_path FROM assets WHERE source_id=? AND media_kind='video'",
+    )
+    .bind(&id)
+    .fetch_all(&db)
+    .await?;
+    for (asset_id, _) in &previews {
+        video_preview::cancel_and_wait(&state, asset_id).await;
+        state.active_video_previews.write().await.remove(asset_id);
+        state
+            .pending_preview_removals
+            .write()
+            .await
+            .remove(asset_id);
+    }
+    sqlx::query("DELETE FROM source_roots WHERE id=?")
+        .bind(&id)
+        .execute(&db)
+        .await?;
+    for (_, preview) in previews {
+        if let Some(preview) = preview {
+            video_preview::remove_if_unreferenced(&db, Path::new(&preview)).await?;
+        }
+    }
+    if let Some(path) = path {
+        if let Err(error) = app.asset_protocol_scope().forbid_directory(path, true) {
+            tracing::warn!(%error, "removed source scope could not be revoked");
+        }
+    }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn prepare_video_preview(id: String, state: State<'_, AppState>) -> AppResult<String> {
-    let db = state.db().await;
-    let (source, quick_hash, existing) = sqlx::query_as::<_, (String, String, Option<String>)>(
-        "SELECT path, quick_hash, preview_path FROM assets WHERE id=? AND media_kind='video'",
-    )
-    .bind(&id)
-    .fetch_optional(&db)
-    .await?
-    .ok_or("Video asset not found")?;
-    if let Some(path) = existing.filter(|path| Path::new(path).is_file()) {
-        return Ok(path);
-    }
-    let destination = state
-        .paths
-        .previews_dir
-        .join(&quick_hash[..2])
-        .join(format!("{quick_hash}.mp4"));
-    media::create_video_preview(Path::new(&source), &destination).await?;
-    let destination = destination.to_string_lossy().to_string();
-    sqlx::query("UPDATE assets SET preview_path=?, updated_at=? WHERE id=?")
-        .bind(&destination)
-        .bind(Utc::now().to_rfc3339())
-        .bind(id)
-        .execute(&db)
-        .await?;
-    Ok(destination)
+pub async fn prepare_video_preview(
+    id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    video_preview::prepare(&app, &state, id).await
+}
+
+#[tauri::command]
+pub async fn cancel_video_preview(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    video_preview::cancel(&state, &id).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn invalidate_video_preview(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    video_preview::invalidate(&state, &id).await
+}
+
+#[tauri::command]
+pub async fn set_video_preview_active(
+    id: String,
+    active: bool,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    video_preview::set_active(&state, &id, active).await
+}
+
+#[tauri::command]
+pub async fn get_video_preview_cache_status(
+    state: State<'_, AppState>,
+) -> AppResult<VideoPreviewCacheStatus> {
+    video_preview::cache_status(&state).await
+}
+
+#[tauri::command]
+pub async fn set_video_preview_cache_limit(
+    limit_bytes: u64,
+    state: State<'_, AppState>,
+) -> AppResult<VideoPreviewCacheStatus> {
+    video_preview::set_cache_limit(&state, limit_bytes).await
+}
+
+#[tauri::command]
+pub async fn clear_video_preview_cache(
+    state: State<'_, AppState>,
+) -> AppResult<VideoPreviewCacheStatus> {
+    video_preview::clear_cache(&state).await
 }
 
 #[tauri::command]
@@ -749,9 +814,10 @@ pub async fn trash_assets(ids: Vec<String>, state: State<'_, AppState>) -> AppRe
             "UPDATE collections SET cover_asset_id=NULL, updated_at=? WHERE cover_asset_id=?",
         )
         .bind(updated_at)
-        .bind(id)
+        .bind(&id)
         .execute(&db)
         .await?;
+        video_preview::invalidate(&state, &id).await?;
     }
     Ok(())
 }

@@ -121,6 +121,23 @@ pub struct JobProgress {
     pub message: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoPreviewProgress {
+    pub asset_id: String,
+    pub phase: String,
+    pub percent: u8,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoPreviewCacheStatus {
+    pub used_bytes: u64,
+    pub limit_bytes: u64,
+    pub item_count: usize,
+    pub pending_cleanup_bytes: u64,
+}
+
 #[derive(Debug, Clone, FromRow)]
 pub struct JobRow {
     pub id: String,
