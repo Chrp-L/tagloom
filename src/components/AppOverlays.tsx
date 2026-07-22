@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
-import type { Asset, LanguageChoice, ThemeChoice } from "../types";
+import type { Asset, LanguageChoice, ThemeChoice, VideoPreviewCacheStatus, VideoPreviewProgress } from "../types";
 import type { ToastMessage } from "./ToastRegion";
 import {
   ConfirmLibraryEntityDeleteDialog,
@@ -35,6 +35,10 @@ interface AppOverlaysProps {
   onPreviewIndexChange: Dispatch<SetStateAction<number>>;
   onOpenExternal: (asset: Asset) => void;
   onPrepareVideo: (asset: Asset) => Promise<string>;
+  onCancelVideo: (asset: Asset) => Promise<void>;
+  onInvalidateVideo: (asset: Asset) => Promise<void>;
+  onSetVideoActive: (asset: Asset, active: boolean) => Promise<void>;
+  onVideoProgress: (handler: (progress: VideoPreviewProgress) => void) => Promise<() => void>;
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
   theme: ThemeChoice;
@@ -43,6 +47,13 @@ interface AppOverlaysProps {
   onLanguageChange: (language: LanguageChoice) => void;
   onBackup: () => void;
   onRestore: () => void;
+  videoCacheStatus?: VideoPreviewCacheStatus;
+  videoCacheLoading: boolean;
+  videoCacheUpdating: boolean;
+  videoCacheClearRequested: boolean;
+  onVideoCacheClearRequestedChange: (requested: boolean) => void;
+  onVideoCacheLimit: (limitBytes: number) => void;
+  onClearVideoCache: () => void;
   toasts: ToastMessage[];
 }
 
@@ -67,6 +78,10 @@ export function AppOverlays({
   onPreviewIndexChange,
   onOpenExternal,
   onPrepareVideo,
+  onCancelVideo,
+  onInvalidateVideo,
+  onSetVideoActive,
+  onVideoProgress,
   settingsOpen,
   onSettingsOpenChange,
   theme,
@@ -75,6 +90,13 @@ export function AppOverlays({
   onLanguageChange,
   onBackup,
   onRestore,
+  videoCacheStatus,
+  videoCacheLoading,
+  videoCacheUpdating,
+  videoCacheClearRequested,
+  onVideoCacheClearRequestedChange,
+  onVideoCacheLimit,
+  onClearVideoCache,
   toasts,
 }: AppOverlaysProps) {
   const { t } = useTranslation();
@@ -115,6 +137,10 @@ export function AppOverlays({
       onIndex={onPreviewIndexChange}
       onOpenExternal={onOpenExternal}
       onPrepareVideo={onPrepareVideo}
+      onCancelVideo={onCancelVideo}
+      onInvalidateVideo={onInvalidateVideo}
+      onSetVideoActive={onSetVideoActive}
+      onVideoProgress={onVideoProgress}
     />
     <SettingsDialog
       open={settingsOpen}
@@ -125,6 +151,20 @@ export function AppOverlays({
       onLanguage={onLanguageChange}
       onBackup={onBackup}
       onRestore={onRestore}
+      videoCacheStatus={videoCacheStatus}
+      videoCacheLoading={videoCacheLoading}
+      videoCacheUpdating={videoCacheUpdating}
+      onVideoCacheLimit={onVideoCacheLimit}
+      onClearVideoCache={() => onVideoCacheClearRequestedChange(true)}
+    />
+    <ConfirmLibraryEntityDeleteDialog
+      open={videoCacheClearRequested}
+      title={t("clearVideoCacheConfirmTitle")}
+      body={t("clearVideoCacheConfirmBody")}
+      confirmLabel={t("clearVideoCache")}
+      pending={videoCacheUpdating}
+      onOpenChange={(open) => { if (!open && !videoCacheUpdating) onVideoCacheClearRequestedChange(false); }}
+      onConfirm={onClearVideoCache}
     />
     <ToastRegion messages={toasts} />
   </>;

@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { mediaUrl } from "../../api";
-import type { Asset } from "../../types";
+import type { Asset, VideoPreviewProgress } from "../../types";
 import { previewMediaVariants, VideoPreview } from "../VideoPreview";
 import type { PreviewDirection } from "../VideoPreview";
 
@@ -12,7 +12,7 @@ export function previewDirectionForIndices(previous: number, next: number): Prev
   return next < previous ? -1 : 1;
 }
 
-export function PreviewDialog({ assets, index, open, onOpenChange, onIndex, onOpenExternal, onPrepareVideo }: { assets: Asset[]; index: number; open: boolean; onOpenChange: (open: boolean) => void; onIndex: (index: number) => void; onOpenExternal: (asset: Asset) => void; onPrepareVideo: (asset: Asset) => Promise<string> }) {
+export function PreviewDialog({ assets, index, open, onOpenChange, onIndex, onOpenExternal, onPrepareVideo, onCancelVideo, onInvalidateVideo, onSetVideoActive, onVideoProgress }: { assets: Asset[]; index: number; open: boolean; onOpenChange: (open: boolean) => void; onIndex: (index: number) => void; onOpenExternal: (asset: Asset) => void; onPrepareVideo: (asset: Asset) => Promise<string>; onCancelVideo: (asset: Asset) => Promise<void>; onInvalidateVideo: (asset: Asset) => Promise<void>; onSetVideoActive: (asset: Asset, active: boolean) => Promise<void>; onVideoProgress: (handler: (progress: VideoPreviewProgress) => void) => Promise<() => void> }) {
   const { t } = useTranslation();
   const asset = assets[index];
   const [volume, setVolume] = useState(1);
@@ -35,7 +35,7 @@ export function PreviewDialog({ assets, index, open, onOpenChange, onIndex, onOp
     <button className="previewNav previous" disabled={index <= 0} aria-label={t("previousItem")} title={t("previousItem")} onClick={() => changeIndex(index - 1)}><ChevronLeft size={28} /></button>
     <button className="previewNav next" disabled={index >= assets.length - 1} aria-label={t("nextItem")} title={t("nextItem")} onClick={() => changeIndex(index + 1)}><ChevronRight size={28} /></button>
     <AnimatePresence mode="wait" custom={direction}>{asset.mediaKind === "video"
-      ? <VideoPreview key={asset.id} asset={asset} index={index} count={assets.length} direction={direction} volume={volume} muted={muted} onVolume={setVolume} onMuted={setMuted} onPrepareVideo={onPrepareVideo} onOpenExternal={onOpenExternal} />
+      ? <VideoPreview key={asset.id} asset={asset} index={index} count={assets.length} direction={direction} volume={volume} muted={muted} onVolume={setVolume} onMuted={setMuted} onPrepareVideo={onPrepareVideo} onCancelVideo={onCancelVideo} onInvalidateVideo={onInvalidateVideo} onSetVideoActive={onSetVideoActive} onVideoProgress={onVideoProgress} onOpenExternal={onOpenExternal} />
       : <motion.div key={asset.id} className="previewMediaLayout" custom={direction} variants={previewMediaVariants} initial="enter" animate="center" exit="exit" transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}><div className="previewStage">{asset.thumbnailPath ? <img src={mediaUrl(asset.path) || mediaUrl(asset.thumbnailPath)} onError={(event) => { event.currentTarget.src = mediaUrl(asset.thumbnailPath) || ""; }} alt={asset.filename} /> : <ImageOff size={34} />}</div><div className="previewControls"><span>{index + 1} / {assets.length}</span><button className="previewExternal tactile" onClick={() => onOpenExternal(asset)}><ExternalLink size={16} />{t("openExternal")}</button></div></motion.div>}
     </AnimatePresence>
     <Dialog.Close asChild><button className="previewClose" aria-label={t("close")}><X size={20} /></button></Dialog.Close>

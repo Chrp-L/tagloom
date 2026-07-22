@@ -95,6 +95,19 @@ export interface JobProgress {
   message?: string;
 }
 
+export interface VideoPreviewProgress {
+  assetId: string;
+  phase: "transcoding" | "finalizing";
+  percent: number;
+}
+
+export interface VideoPreviewCacheStatus {
+  usedBytes: number;
+  limitBytes: number;
+  itemCount: number;
+  pendingCleanupBytes: number;
+}
+
 export interface Setting {
   key: string;
   value: string;

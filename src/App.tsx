@@ -23,6 +23,7 @@ import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useLibraryActions } from "./hooks/useLibraryActions";
 import { usePreviewController } from "./hooks/usePreviewController";
 import { useTransientCue } from "./hooks/useTransientCue";
+import { useVideoPreviewCache } from "./hooks/useVideoPreviewCache";
 import { getAssetActionTargets } from "./features/selection/selectionModel";
 import { useUiStore } from "./store";
 import type { Asset, AssetQuery, JobProgress } from "./types";
@@ -59,6 +60,7 @@ export default function App() {
   const [sort, setSort] = useState<AssetQuery["sort"]>("newest");
   const [createKind, setCreateKind] = useState<"tag" | "collection" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [videoCacheClearRequested, setVideoCacheClearRequested] = useState(false);
   const [trashTargetIds, setTrashTargetIds] = useState<string[]>([]);
   const [libraryDeleteTarget, setLibraryDeleteTarget] = useState<LibraryDeleteTarget>();
   const [libraryDeletePending, setLibraryDeletePending] = useState(false);
@@ -66,6 +68,8 @@ export default function App() {
   const [job, setJob] = useState<JobProgress>();
   const { cue: weaveCue, trigger: cueWeave } = useTransientCue();
   const { messages: toasts, notify } = useAppNotifications();
+  const notifyError = useCallback((message: string) => notify(message, "error"), [notify]);
+  const videoCache = useVideoPreviewCache({ enabled: settingsOpen, onError: notifyError });
   const { theme, language, changeTheme: setTheme, changeLanguage: setAppLanguage } = useAppPreferences();
 
   const { bootstrap, jobs: jobsQuery, assets: assetsQuery, items: assets, total } = useLibraryQueries(ui.navigation, deferredSearch, sort);
@@ -136,7 +140,7 @@ export default function App() {
   const createEntity = (name: string, color?: string) => action(
     () => createKind === "tag" ? api.createTag(name, color || "#ee6859") : api.createCollection(name),
   );
-  const { preview, prepareVideo, previewAssets, previewOpen, setPreviewOpen, previewIndex, setPreviewIndex } = usePreviewController({
+  const { preview, prepareVideo, cancelVideo, invalidateVideo, setVideoActive, onVideoProgress, previewAssets, previewOpen, setPreviewOpen, previewIndex, setPreviewIndex } = usePreviewController({
     assets,
     queryClient,
     videoPreviewFailed: t("videoPreviewFailed"),
@@ -212,6 +216,10 @@ export default function App() {
         onPreviewIndexChange={setPreviewIndex}
         onOpenExternal={(asset) => void libraryActions.open(asset)}
         onPrepareVideo={prepareVideo}
+        onCancelVideo={cancelVideo}
+        onInvalidateVideo={invalidateVideo}
+        onSetVideoActive={setVideoActive}
+        onVideoProgress={onVideoProgress}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         theme={theme}
@@ -220,6 +228,13 @@ export default function App() {
         onLanguageChange={setAppLanguage}
         onBackup={() => void action(async () => { await api.createBackup(); }, t("backupCreated"))}
         onRestore={() => void action(api.restoreBackup)}
+        videoCacheStatus={videoCache.status}
+        videoCacheLoading={videoCache.loading}
+        videoCacheUpdating={videoCache.updating}
+        videoCacheClearRequested={videoCacheClearRequested}
+        onVideoCacheClearRequestedChange={setVideoCacheClearRequested}
+        onVideoCacheLimit={(limitBytes) => void videoCache.setLimit(limitBytes)}
+        onClearVideoCache={() => void videoCache.clear().then((cleared) => { if (cleared) setVideoCacheClearRequested(false); })}
         toasts={toasts}
       />
     </Tooltip.Provider>

@@ -1,4 +1,4 @@
-import type { Asset, HomeSnapshot, Setting } from "../types";
+import type { Asset, HomeSnapshot, Setting, VideoPreviewCacheStatus } from "../types";
 import type { TagloomApi } from "./tauriApi";
 import {
   demoAssets,
@@ -12,6 +12,8 @@ import {
 } from "./demoData";
 
 const demoSettings = new Map<string, string>();
+const DEFAULT_VIDEO_CACHE_LIMIT = 5 * 1024 ** 3;
+let demoVideoCacheStatus: VideoPreviewCacheStatus = { usedBytes: 0, limitBytes: DEFAULT_VIDEO_CACHE_LIMIT, itemCount: 0, pendingCleanupBytes: 0 };
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -129,7 +131,21 @@ export const demoApi = {
   updateAssetNote: async (id, note) => {
     replaceDemoAssets((assets) => assets.map((asset) => asset.id === id ? { ...asset, note } : asset));
   },
-  prepareVideoPreview: async (id) => demoAssets.find((asset) => asset.id === id)?.thumbnailPath,
+  prepareVideoPreview: async (id) => demoAssets.find((asset) => asset.id === id)?.previewPath ?? demoAssets.find((asset) => asset.id === id)?.path,
+  cancelVideoPreview: async () => undefined,
+  invalidateVideoPreview: async (id) => {
+    replaceDemoAssets((assets) => assets.map((asset) => asset.id === id ? { ...asset, previewPath: undefined } : asset));
+  },
+  setVideoPreviewActive: async () => undefined,
+  getVideoPreviewCacheStatus: async () => clone(demoVideoCacheStatus),
+  setVideoPreviewCacheLimit: async (limitBytes) => {
+    demoVideoCacheStatus = { ...demoVideoCacheStatus, limitBytes };
+    return clone(demoVideoCacheStatus);
+  },
+  clearVideoPreviewCache: async () => {
+    demoVideoCacheStatus = { ...demoVideoCacheStatus, usedBytes: 0, itemCount: 0, pendingCleanupBytes: 0 };
+    return clone(demoVideoCacheStatus);
+  },
   moveAsset: async (id, destination) => {
     const filename = destination.split(/[\\/]/).filter(Boolean).at(-1) ?? destination;
     replaceDemoAssets((assets) => assets.map((asset) => asset.id === id ? { ...asset, path: destination, filename } : asset));
@@ -158,6 +174,7 @@ export const demoApi = {
     demoSettings.set(key, value);
   },
   onJobProgress: async () => () => undefined,
+  onVideoPreviewProgress: async () => () => undefined,
   onLibraryChanged: async () => () => undefined,
   onSourceDirty: async () => () => undefined,
 } satisfies TagloomApi;
