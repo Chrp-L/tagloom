@@ -320,17 +320,9 @@ pub async fn add_source(
 }
 
 #[tauri::command]
-pub async fn remove_source(
-    id: String,
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub async fn remove_source(id: String, state: State<'_, AppState>) -> AppResult<()> {
     watcher::detach(&state, &id);
     let db = state.db().await;
-    let path = sqlx::query_scalar::<_, String>("SELECT path FROM source_roots WHERE id=?")
-        .bind(&id)
-        .fetch_optional(&db)
-        .await?;
     let previews = sqlx::query_as::<_, (String, Option<String>)>(
         "SELECT id, preview_path FROM assets WHERE source_id=? AND media_kind='video'",
     )
@@ -355,11 +347,9 @@ pub async fn remove_source(
             video_preview::remove_if_unreferenced(&db, Path::new(&preview)).await?;
         }
     }
-    if let Some(path) = path {
-        if let Err(error) = app.asset_protocol_scope().forbid_directory(path, true) {
-            tracing::warn!(%error, "removed source scope could not be revoked");
-        }
-    }
+    // Tauri's runtime scope is additive: a forbidden path cannot be allowed again
+    // until restart. Keep the existing process-local grant so users can undo a
+    // source removal by adding the same folder again; it expires with the process.
     Ok(())
 }
 
