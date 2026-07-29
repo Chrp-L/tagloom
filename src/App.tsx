@@ -1,7 +1,7 @@
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { useQueryClient } from "@tanstack/react-query";
 import { MotionConfig } from "motion/react";
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import { api } from "./api";
@@ -11,6 +11,7 @@ import { AssetBrowser } from "./components/AssetBrowser";
 import { HomePage } from "./components/HomePage";
 import { Inspector } from "./components/Inspector";
 import { LibraryOverview } from "./components/LibraryOverview";
+import { MoodboardWorkspace } from "./components/MoodboardWorkspace";
 import { Sidebar } from "./components/Sidebar";
 import { ScanStatusBar } from "./components/ScanStatusBar";
 import { Toolbar } from "./components/Toolbar";
@@ -66,6 +67,8 @@ export default function App() {
   const [libraryDeletePending, setLibraryDeletePending] = useState(false);
   const [renameAsset, setRenameAsset] = useState<Asset>();
   const [job, setJob] = useState<JobProgress>();
+  const [collectionMode, setCollectionMode] = useState<"assets" | "moodboards">("assets");
+  const moodboardFlushRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const { cue: weaveCue, trigger: cueWeave } = useTransientCue();
   const { messages: toasts, notify } = useAppNotifications();
   const notifyError = useCallback((message: string) => notify(message, "error"), [notify]);
@@ -156,22 +159,30 @@ export default function App() {
     useUiStore.getState().resetAssetContext();
     setSort(value as AssetQuery["sort"]);
   }, [cueWeave]);
+  const moodboardMode = ui.navigation.kind === "collection" && collectionMode === "moodboards";
+  const navigate = useCallback((value: Parameters<typeof ui.setNavigation>[0]) => {
+    const complete = () => { setCollectionMode("assets"); ui.setNavigation(value); };
+    if (!moodboardMode || !moodboardFlushRef.current) { complete(); return; }
+    void moodboardFlushRef.current().then(complete).catch((error) => notify(error instanceof Error ? error.message : String(error), "error"));
+  }, [moodboardMode, notify, ui]);
 
   return <MotionConfig reducedMotion="user">
     <Tooltip.Provider delayDuration={500}>
       <WindowChrome />
-      <div className={`appShell ${ui.sidebarCollapsed ? "sidebarCollapsed" : ""}`}>
+      <div className={`appShell ${ui.sidebarCollapsed ? "sidebarCollapsed" : ""} ${moodboardMode ? "moodboardActive" : ""}`}>
         <Sidebar data={bootstrap.data} navigation={ui.navigation} collapsed={ui.sidebarCollapsed} collapsedSections={ui.collapsedSections} eventCue={weaveCue?.kind === "sidebar" ? weaveCue.id : undefined}
-          onCollapsedChange={(value) => { cueWeave("sidebar"); ui.setSidebarCollapsed(value); }} onToggleSection={ui.toggleSidebarSection} onRevealSection={ui.revealSidebarSection} onNavigate={(value) => { cueWeave("filter"); ui.setNavigation(value); }} onAddSource={libraryActions.addFolder}
+          onCollapsedChange={(value) => { cueWeave("sidebar"); ui.setSidebarCollapsed(value); }} onToggleSection={ui.toggleSidebarSection} onRevealSection={ui.revealSidebarSection} onNavigate={(value) => { cueWeave("filter"); navigate(value); }} onAddSource={libraryActions.addFolder}
           onCreateTag={() => setCreateKind("tag")} onCreateCollection={() => setCreateKind("collection")}
           onRescan={(id) => void libraryActions.rescan(id)} onRemoveSource={(source) => setLibraryDeleteTarget({ kind: "source", id: source.id, name: source.name })}
           onDeleteCollection={(collection) => setLibraryDeleteTarget({ kind: "collection", id: collection.id, name: collection.name })}
           onDeleteTag={(tag) => setLibraryDeleteTarget({ kind: "tag", id: tag.id, name: tag.name })}
           />
         <main className="workspace">
+          {moodboardMode && activeCollection ? <MoodboardWorkspace collectionId={activeCollection.id} collectionName={activeCollection.name} onModeChange={setCollectionMode} onPreview={(asset) => preview(asset, assets)} onNotify={notify} onFlushReady={(flush) => { moodboardFlushRef.current = flush; }} /> : <>
           <Toolbar mode={ui.navigation.kind === "home" ? "home" : "assets"} title={title} count={total} search={search} sort={sort || "newest"} view={ui.view} gridColumns={ui.gridColumns} selectionMode={ui.selectionMode} checkedCount={ui.checkedIds.length} eventCue={weaveCue}
             onSearch={changeSearch} onSort={changeSort} onView={(value) => { cueWeave("layout"); ui.setView(value); }} onGridColumns={(value) => { cueWeave("layout"); ui.setGridColumns(value); }} onEnterBatch={ui.enterBatchSelection} onExitBatch={ui.exitBatchSelection} onSettings={() => setSettingsOpen(true)} />
           <ScanStatusBar job={job} onControl={(command) => { if (job) void api.controlJob(job.id, command); }} />
+          {ui.navigation.kind === "collection" && <div className="collectionModeBar"><div className="segmented" aria-label={t("collections")}><button className="tactile" aria-pressed={collectionMode === "assets"} onClick={() => setCollectionMode("assets")}>{t("assetsMode")}</button><button className="tactile" aria-pressed={collectionMode === "moodboards"} onClick={() => setCollectionMode("moodboards")}>{t("moodboardsMode")}</button></div></div>}
           {ui.navigation.kind === "home" ? <HomePage snapshot={homeQuery.data} loading={homeQuery.isLoading} error={homeQuery.error instanceof Error ? homeQuery.error.message : homeQuery.error ? String(homeQuery.error) : undefined} focusedAssetId={ui.focusedAssetId} job={job}
             hasSources={(bootstrap.data?.sources.length ?? 0) > 0} onAddSource={libraryActions.addFolder}
             onOpenCollection={(id) => ui.setNavigation({ kind: "collection", id })} onViewCollections={() => ui.revealSidebarSection("collections")} onCreateCollection={() => setCreateKind("collection")}
@@ -182,11 +193,12 @@ export default function App() {
             collectionContext={activeCollection ? { id: activeCollection.id, coverAssetId: activeCollection.coverAssetId } : undefined}
             onSetCollectionCover={(collectionId, assetId) => void action(() => api.setCollectionCover(collectionId, assetId), t("operationComplete"))}
             onClearCollectionCover={(collectionId) => void action(() => api.clearCollectionCover(collectionId), t("operationComplete"))} onAddSource={libraryActions.addFolder} />}
+          </>}
         </main>
-        {ui.inspectorOpen && ui.navigation.kind === "home" && !focusedAsset && ui.selectionMode === "browse" ? <LibraryOverview data={bootstrap.data} jobs={jobsQuery.data} onAddSource={libraryActions.addFolder} onOpenSource={(id: string) => ui.setNavigation({ kind: "source", id })} /> : ui.inspectorOpen && <Inspector selectionMode={ui.selectionMode} focusedAsset={focusedAsset} checkedAssets={checkedAssets} tags={bootstrap.data?.tags ?? []} collections={bootstrap.data?.collections ?? []} sources={bootstrap.data?.sources ?? []}
+        {!moodboardMode && (ui.inspectorOpen && ui.navigation.kind === "home" && !focusedAsset && ui.selectionMode === "browse" ? <LibraryOverview data={bootstrap.data} jobs={jobsQuery.data} onAddSource={libraryActions.addFolder} onOpenSource={(id: string) => ui.setNavigation({ kind: "source", id })} /> : ui.inspectorOpen && <Inspector selectionMode={ui.selectionMode} focusedAsset={focusedAsset} checkedAssets={checkedAssets} tags={bootstrap.data?.tags ?? []} collections={bootstrap.data?.collections ?? []} sources={bootstrap.data?.sources ?? []}
           onSetTag={(tagId, attached) => void libraryActions.setTags(tagId, attached)} onAddCollection={(collectionId) => void action(() => api.setCollectionAssets(collectionId, inspectorTargetIds, true), t("operationComplete"))}
           onSaveNote={(id, note) => void action(() => api.updateAssetNote(id, note), t("operationComplete"))} onRename={setRenameAsset} onMove={(asset) => void libraryActions.move(asset)}
-          onTrash={() => libraryActions.trash(inspectorTargetIds)} onReveal={(asset) => void libraryActions.reveal(asset)} onOpen={(asset) => void libraryActions.open(asset)} />}
+          onTrash={() => libraryActions.trash(inspectorTargetIds)} onReveal={(asset) => void libraryActions.reveal(asset)} onOpen={(asset) => void libraryActions.open(asset)} />)}
       </div>
       <AppOverlays
         createKind={createKind}
