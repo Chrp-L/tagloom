@@ -4,6 +4,7 @@ mod media;
 mod models;
 mod scanner;
 mod state;
+mod video_preview;
 mod watcher;
 
 use commands::*;
@@ -30,11 +31,22 @@ pub fn run() {
             )
             .unwrap_or_default();
             for (id, path) in sources {
+                if let Err(error) = app
+                    .asset_protocol_scope()
+                    .allow_directory(std::path::Path::new(&path), true)
+                {
+                    tracing::warn!(error = %error, "existing source could not be authorized");
+                }
                 if let Err(error) =
                     watcher::attach(handle.clone(), &state, id, std::path::Path::new(&path))
                 {
                     tracing::warn!(error = %error, "existing source watcher could not be started");
                 }
+            }
+            if let Err(error) =
+                tauri::async_runtime::block_on(video_preview::coordinate_cache(&state))
+            {
+                tracing::warn!(error = %error, "video preview cache coordination failed");
             }
             Ok(())
         })
@@ -57,9 +69,23 @@ pub fn run() {
             set_collection_assets,
             set_collection_cover,
             clear_collection_cover,
+            list_moodboards,
+            create_moodboard,
+            get_moodboard,
+            save_moodboard,
+            rename_moodboard,
+            delete_moodboard,
+            set_moodboard_contexts,
+            write_moodboard_export,
             record_asset_viewed,
             update_asset_note,
             prepare_video_preview,
+            cancel_video_preview,
+            invalidate_video_preview,
+            set_video_preview_active,
+            get_video_preview_cache_status,
+            set_video_preview_cache_limit,
+            clear_video_preview_cache,
             move_asset,
             undo_last_file_operation,
             trash_assets,

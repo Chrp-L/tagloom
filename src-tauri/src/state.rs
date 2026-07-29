@@ -3,11 +3,14 @@ use directories::ProjectDirs;
 use notify::RecommendedWatcher;
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::{Arc, Mutex as StdMutex},
+    sync::{
+        atomic::{AtomicBool, AtomicU64},
+        Arc, Mutex as StdMutex,
+    },
 };
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, Notify, RwLock};
 
 #[derive(Clone)]
 pub struct AppPaths {
@@ -26,10 +29,30 @@ pub struct JobControl {
     pub cancelled: bool,
 }
 
+pub struct VideoPreviewJob {
+    pub cancelled: Arc<AtomicBool>,
+    pub result: Mutex<Option<Result<String, String>>>,
+    pub notify: Notify,
+}
+
+impl Default for VideoPreviewJob {
+    fn default() -> Self {
+        Self {
+            cancelled: Arc::new(AtomicBool::new(false)),
+            result: Mutex::new(None),
+            notify: Notify::new(),
+        }
+    }
+}
+
 pub struct AppState {
     pub pool: RwLock<SqlitePool>,
     pub paths: AppPaths,
     pub jobs: Arc<Mutex<HashMap<String, Arc<Mutex<JobControl>>>>>,
+    pub video_preview_jobs: Arc<Mutex<HashMap<String, Arc<VideoPreviewJob>>>>,
+    pub active_video_previews: Arc<RwLock<HashSet<String>>>,
+    pub pending_preview_removals: Arc<RwLock<HashSet<String>>>,
+    pub pending_preview_cleanup_bytes: AtomicU64,
     pub watchers: StdMutex<HashMap<String, RecommendedWatcher>>,
     _log_guard: tracing_appender::non_blocking::WorkerGuard,
 }
@@ -80,6 +103,10 @@ impl AppState {
             pool: RwLock::new(pool),
             paths,
             jobs: Arc::new(Mutex::new(HashMap::new())),
+            video_preview_jobs: Arc::new(Mutex::new(HashMap::new())),
+            active_video_previews: Arc::new(RwLock::new(HashSet::new())),
+            pending_preview_removals: Arc::new(RwLock::new(HashSet::new())),
+            pending_preview_cleanup_bytes: AtomicU64::new(0),
             watchers: StdMutex::new(HashMap::new()),
             _log_guard: log_guard,
         })

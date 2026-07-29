@@ -5,4 +5,9 @@
 @import "./styles/inspector.css";
 @import "./styles/dialogs.css";
 @import "./styles/motion.css";
+@import "./styles/moodboard-export.css";
+@import "./styles/moodboard-list.css";
+@import "./styles/moodboard.css";
+@import "./styles/moodboard-workspace.css";
+@import "./styles/moodboard.css";
 @import "./styles/responsive.css";

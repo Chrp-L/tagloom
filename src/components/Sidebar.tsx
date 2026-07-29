@@ -1,7 +1,7 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
-import { ChevronDown, Folder, FolderOpen, House, Image, Layers3, Library, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Tags, Trash2, Video } from "lucide-react";
+import { ChevronDown, Folder, FolderOpen, House, Image, Layers3, Library, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Rows3, Tags, Trash2, Video } from "lucide-react";
 import { useRef } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -59,6 +59,7 @@ export function Sidebar(props: SidebarProps) {
     <div className="sidebarBrand compactBrand" data-tauri-drag-region onDoubleClick={(event) => { if (!isInteractiveWindowTarget(event.target)) void toggleCurrentWindowMaximize(); }}><Logo compact />{props.eventCue && <motion.span key={props.eventCue} className="sidebarBrandCue" initial={{ opacity: 0, scaleX: 0 }} animate={{ opacity: [0, 1, 0], scaleX: [0, 1, 0.45] }} transition={{ duration: 0.58 }} />}<button className="sidebarToggle tactile" aria-label={t("expandSidebar")} title={t("expandSidebar")} onClick={() => props.onCollapsedChange(false)}><PanelLeftOpen size={17} /></button></div>
     <nav className="railNav">
       <RailButton label={t("home")} active={active("home")} onClick={() => props.onNavigate({ kind: "home" })}><House size={18} /></RailButton>
+      <RailButton label={t("moodboards")} active={(props.navigation as { kind: string }).kind === "moodboards"} onClick={() => props.onNavigate({ kind: "moodboards" } as NavigationFilter)}><Rows3 size={18} /></RailButton>
       <RailButton label={t("allItems")} active={active("all")} onClick={() => props.onNavigate({ kind: "all" })}><Library size={18} /></RailButton>
       <RailButton label={t("images")} active={active("media") && props.navigation.kind === "media" && props.navigation.mediaKind === "image"} onClick={() => props.onNavigate({ kind: "media", mediaKind: "image" })}><Image size={18} /></RailButton>
       <RailButton label={t("videos")} active={active("media") && props.navigation.kind === "media" && props.navigation.mediaKind === "video"} onClick={() => props.onNavigate({ kind: "media", mediaKind: "video" })}><Video size={18} /></RailButton>
@@ -81,6 +82,7 @@ export function Sidebar(props: SidebarProps) {
       <section className="navSection">
         <h2>{t("workspace")}</h2>
         <button className={`navItem tactile ${active("home") ? "active" : ""}`} aria-current={active("home") ? "page" : undefined} onClick={() => props.onNavigate({ kind: "home" })}>{active("home") && <ActivePlate />}<House size={17} /><span>{t("home")}</span></button>
+        <button className={`navItem tactile ${(props.navigation as { kind: string }).kind === "moodboards" ? "active" : ""}`} aria-current={(props.navigation as { kind: string }).kind === "moodboards" ? "page" : undefined} onClick={() => props.onNavigate({ kind: "moodboards" } as NavigationFilter)}>{(props.navigation as { kind: string }).kind === "moodboards" && <ActivePlate />}<Rows3 size={17} /><span>{t("moodboards")}</span></button>
       </section>
 
       <section className="navSection">

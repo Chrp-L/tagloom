@@ -95,7 +95,133 @@ export interface JobProgress {
   message?: string;
 }
 
+export interface VideoPreviewProgress {
+  assetId: string;
+  phase: "transcoding" | "finalizing";
+  percent: number;
+}
+
+export interface VideoPreviewCacheStatus {
+  usedBytes: number;
+  limitBytes: number;
+  itemCount: number;
+  pendingCleanupBytes: number;
+}
+
 export interface Setting {
   key: string;
   value: string;
+}
+
+export interface MoodboardViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface MoodboardAssetSnapshot {
+  filename: string;
+  mediaKind: MediaKind;
+  thumbnailPath?: string;
+}
+
+export interface MoodboardAssetNode {
+  id: string;
+  type: "asset";
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  zIndex: number;
+  data: {
+    assetId?: string;
+    assetSnapshot?: MoodboardAssetSnapshot;
+    fit: "cover" | "contain";
+  };
+}
+
+export interface MoodboardTextNode {
+  id: string;
+  type: "text";
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  zIndex: number;
+  data: {
+    text: string;
+    fontSize: "small" | "medium" | "large";
+    color: string;
+    align: "left" | "center" | "right";
+  };
+}
+
+export interface MoodboardSwatchNode {
+  id: string;
+  type: "swatch";
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  zIndex: number;
+  data: {
+    color: string;
+    name?: string;
+  };
+}
+
+export type MoodboardNode = MoodboardAssetNode | MoodboardTextNode | MoodboardSwatchNode;
+
+export type MoodboardHandlePosition = "top" | "right" | "bottom" | "left";
+
+export interface MoodboardEdgeConfig {
+  sourceHandle?: MoodboardHandlePosition;
+  targetHandle?: MoodboardHandlePosition;
+}
+
+export interface MoodboardEdge {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  color: "neutral" | "coral" | "green" | "gold";
+  config?: MoodboardEdgeConfig;
+}
+
+export interface MoodboardSummary {
+  id: string;
+  /** The first linked context, retained for backwards-compatible clients. */
+  collectionId?: string;
+  collectionIds?: string[];
+  contexts?: MoodboardContextRef[];
+  name: string;
+  nodeCount: number;
+  previewAssets: Asset[];
+  updatedAt: string;
+}
+
+export interface MoodboardContextRef {
+  id: string;
+  name: string;
+}
+
+export interface MoodboardDocument {
+  id: string;
+  /** The first linked context, retained for backwards-compatible documents. */
+  collectionId?: string;
+  collectionIds?: string[];
+  contexts?: MoodboardContextRef[];
+  name: string;
+  viewport: MoodboardViewport;
+  backgroundColor: string;
+  nodes: MoodboardNode[];
+  edges: MoodboardEdge[];
+  revision: number;
+}
+
+export interface SaveMoodboardResult {
+  revision: number;
+  updatedAt: string;
+}
+
+export interface MoodboardListFilter {
+  collectionId?: string;
+}
+
+export interface CreateMoodboardInput {
+  name?: string;
+  collectionIds?: string[];
 }

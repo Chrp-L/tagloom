@@ -1,12 +1,17 @@
-use crate::{error::AppResult, state::AppPaths};
+use crate::{error::AppResult, models::VideoPreviewProgress, state::AppPaths};
 use blake3::Hasher;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
+use tauri::{AppHandle, Emitter};
 use tokio::{
-    io::{AsyncReadExt, AsyncSeekExt},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, BufReader},
     process::Command,
 };
 
@@ -250,14 +255,21 @@ pub async fn create_video_thumbnail(source: &Path, destination: &Path) -> AppRes
     Ok(())
 }
 
-pub async fn create_video_preview(source: &Path, destination: &Path) -> AppResult<()> {
+pub async fn create_video_preview(
+    app: &AppHandle,
+    asset_id: &str,
+    source: &Path,
+    destination: &Path,
+    duration_ms: Option<i64>,
+    cancelled: Arc<AtomicBool>,
+) -> AppResult<()> {
     let Some(ffmpeg) = tool_candidate("ffmpeg") else {
         return Err("Bundled ffmpeg is not available".into());
     };
     if let Some(parent) = destination.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    let status = media_tool_command(&ffmpeg)
+    let mut child = media_tool_command(&ffmpeg)
         .args(["-hide_banner", "-loglevel", "error", "-y"])
         .arg("-i")
         .arg(source)
@@ -280,12 +292,130 @@ pub async fn create_video_preview(source: &Path, destination: &Path) -> AppResul
             "+faststart",
             "-f",
             "mp4",
+            "-progress",
+            "pipe:1",
+            "-nostats",
         ])
         .arg(destination)
-        .status()
-        .await?;
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or("ffmpeg progress stream is unavailable")?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or("ffmpeg error stream is unavailable")?;
+    let stderr_task = tokio::spawn(async move {
+        let mut output = Vec::new();
+        let _ = stderr.read_to_end(&mut output).await;
+        output
+    });
+    let mut lines = BufReader::new(stdout).lines();
+    let mut last_percent = 0_u8;
+    let _ = app.emit(
+        "video-preview-progress",
+        VideoPreviewProgress {
+            asset_id: asset_id.to_owned(),
+            phase: "transcoding".into(),
+            percent: 0,
+        },
+    );
+
+    loop {
+        if cancelled.load(Ordering::Relaxed) {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            let _ = stderr_task.await;
+            return Err("Video preview preparation was cancelled".into());
+        }
+        tokio::select! {
+            line = lines.next_line() => {
+                match line? {
+                    Some(line) => {
+                        if let Some(percent) = preview_progress_percent(&line, duration_ms) {
+                            if percent > last_percent {
+                                last_percent = percent;
+                                let _ = app.emit(
+                                    "video-preview-progress",
+                                    VideoPreviewProgress {
+                                        asset_id: asset_id.to_owned(),
+                                        phase: "transcoding".into(),
+                                        percent,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    None => break,
+                }
+            }
+            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {}
+        }
+    }
+
+    let status = child.wait().await?;
+    let stderr = stderr_task.await.unwrap_or_default();
     if !status.success() {
+        let diagnostic = String::from_utf8_lossy(&stderr).trim().to_owned();
+        tracing::error!(asset_id, %diagnostic, "ffmpeg video preview generation failed");
         return Err("ffmpeg could not generate a compatible preview".into());
+    }
+    let _ = app.emit(
+        "video-preview-progress",
+        VideoPreviewProgress {
+            asset_id: asset_id.to_owned(),
+            phase: "finalizing".into(),
+            percent: 99,
+        },
+    );
+    Ok(())
+}
+
+fn preview_progress_percent(line: &str, duration_ms: Option<i64>) -> Option<u8> {
+    let duration_us = duration_ms?.checked_mul(1_000)?;
+    if duration_us <= 0 {
+        return None;
+    }
+    let (key, value) = line.split_once('=')?;
+    if key != "out_time_us" && key != "out_time_ms" {
+        return None;
+    }
+    let elapsed_us = value.parse::<i64>().ok()?.max(0);
+    Some(((elapsed_us.saturating_mul(100) / duration_us).clamp(0, 98)) as u8)
+}
+
+pub async fn validate_video_preview(path: &Path) -> AppResult<()> {
+    let metadata = tokio::fs::metadata(path).await?;
+    if metadata.len() == 0 {
+        return Err("Generated video preview is empty".into());
+    }
+    let Some(ffprobe) = tool_candidate("ffprobe") else {
+        return Err("Bundled ffprobe is not available".into());
+    };
+    let output = media_tool_command(&ffprobe)
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+        ])
+        .arg(path)
+        .output()
+        .await?;
+    if !output.status.success() || String::from_utf8_lossy(&output.stdout).trim() != "video" {
+        tracing::error!(
+            diagnostic = %String::from_utf8_lossy(&output.stderr).trim(),
+            "generated video preview validation failed"
+        );
+        return Err("Generated video preview is not playable".into());
     }
     Ok(())
 }
@@ -296,4 +426,26 @@ pub fn thumbnail_path(paths: &AppPaths, hash: &str, video: bool) -> PathBuf {
         .thumbnails_dir
         .join(&hash[..2])
         .join(format!("{hash}.{ext}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::preview_progress_percent;
+
+    #[test]
+    fn converts_ffmpeg_microsecond_progress_to_a_bounded_percent() {
+        assert_eq!(
+            preview_progress_percent("out_time_us=2500000", Some(10_000)),
+            Some(25)
+        );
+        assert_eq!(
+            preview_progress_percent("out_time_ms=99999999", Some(10_000)),
+            Some(98)
+        );
+        assert_eq!(
+            preview_progress_percent("progress=continue", Some(10_000)),
+            None
+        );
+        assert_eq!(preview_progress_percent("out_time_us=100", None), None);
+    }
 }

@@ -121,6 +121,23 @@ pub struct JobProgress {
     pub message: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoPreviewProgress {
+    pub asset_id: String,
+    pub phase: String,
+    pub percent: u8,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoPreviewCacheStatus {
+    pub used_bytes: u64,
+    pub limit_bytes: u64,
+    pub item_count: usize,
+    pub pending_cleanup_bytes: u64,
+}
+
 #[derive(Debug, Clone, FromRow)]
 pub struct JobRow {
     pub id: String,
@@ -149,4 +166,94 @@ impl From<JobRow> for JobProgress {
 pub struct Setting {
     pub key: String,
     pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodboardViewport {
+    pub x: f64,
+    pub y: f64,
+    pub zoom: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodboardPosition {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodboardSize {
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodboardNode {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub node_type: String,
+    pub position: MoodboardPosition,
+    pub size: MoodboardSize,
+    pub z_index: i64,
+    pub data: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodboardEdge {
+    pub id: String,
+    pub source_node_id: String,
+    pub target_node_id: String,
+    pub color: String,
+    #[serde(default)]
+    pub config: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodboardDocument {
+    pub id: String,
+    // Kept for v1 clients. It is the first linked context, or an empty string for global boards.
+    pub collection_id: String,
+    #[serde(default)]
+    pub collection_ids: Vec<String>,
+    #[serde(default)]
+    pub contexts: Vec<MoodboardContext>,
+    pub name: String,
+    pub viewport: MoodboardViewport,
+    pub background_color: String,
+    pub nodes: Vec<MoodboardNode>,
+    pub edges: Vec<MoodboardEdge>,
+    pub revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodboardSummary {
+    pub id: String,
+    pub collection_id: String,
+    pub collection_ids: Vec<String>,
+    pub contexts: Vec<MoodboardContext>,
+    pub name: String,
+    pub node_count: i64,
+    pub preview_assets: Vec<Asset>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveMoodboardResult {
+    pub revision: i64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodboardContext {
+    pub id: String,
+    pub name: String,
 }

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
-import type { AssetPage, AssetQuery, HomeSnapshot, JobProgress, LibraryBootstrap, Setting } from "../types";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import type { AssetPage, AssetQuery, CreateMoodboardInput, HomeSnapshot, JobProgress, LibraryBootstrap, MoodboardDocument, MoodboardListFilter, MoodboardSummary, SaveMoodboardResult, Setting, VideoPreviewCacheStatus, VideoPreviewProgress } from "../types";
 
 function command<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   return invoke<T>(name, args);
@@ -30,9 +30,28 @@ export const tauriApi = {
   setCollectionAssets: (collectionId: string, assetIds: string[], attached: boolean): Promise<void> => command("set_collection_assets", { collectionId, assetIds, attached }),
   setCollectionCover: (collectionId: string, assetId: string): Promise<void> => command("set_collection_cover", { collectionId, assetId }),
   clearCollectionCover: (collectionId: string): Promise<void> => command("clear_collection_cover", { collectionId }),
+  listMoodboards: (filter: MoodboardListFilter = {}): Promise<MoodboardSummary[]> => command("list_moodboards", { ...filter }),
+  createMoodboard: (input: CreateMoodboardInput = {}): Promise<MoodboardDocument> => command("create_moodboard", { ...input }),
+  getMoodboard: (id: string): Promise<MoodboardDocument> => command("get_moodboard", { id }),
+  saveMoodboard: (document: MoodboardDocument, expectedRevision: number): Promise<SaveMoodboardResult> => command("save_moodboard", { document, expectedRevision }),
+  renameMoodboard: (id: string, name: string): Promise<void> => command("rename_moodboard", { id, name }),
+  deleteMoodboard: (id: string): Promise<void> => command("delete_moodboard", { id }),
+  setMoodboardContexts: (id: string, collectionIds: string[]): Promise<void> => command("set_moodboard_contexts", { moodboardId: id, collectionIds }),
+  pickMoodboardExportPath: async (name: string): Promise<string | null> => save({
+    title: "Export moodboard",
+    defaultPath: `${name.replace(/[\\/:*?\"<>|]/g, "-") || "moodboard"}.png`,
+    filters: [{ name: "PNG image", extensions: ["png"] }],
+  }),
+  writeMoodboardExport: (path: string, bytes: Uint8Array): Promise<void> => command("write_moodboard_export", { path, bytes: Array.from(bytes) }),
   recordAssetViewed: (id: string): Promise<void> => command("record_asset_viewed", { id }),
   updateAssetNote: (id: string, note: string): Promise<void> => command("update_asset_note", { id, note }),
   prepareVideoPreview: (id: string): Promise<string | undefined> => command("prepare_video_preview", { id }),
+  cancelVideoPreview: (id: string): Promise<void> => command("cancel_video_preview", { id }),
+  invalidateVideoPreview: (id: string): Promise<void> => command("invalidate_video_preview", { id }),
+  setVideoPreviewActive: (id: string, active: boolean): Promise<void> => command("set_video_preview_active", { id, active }),
+  getVideoPreviewCacheStatus: (): Promise<VideoPreviewCacheStatus> => command("get_video_preview_cache_status"),
+  setVideoPreviewCacheLimit: (limitBytes: number): Promise<VideoPreviewCacheStatus> => command("set_video_preview_cache_limit", { limitBytes }),
+  clearVideoPreviewCache: (): Promise<VideoPreviewCacheStatus> => command("clear_video_preview_cache"),
   moveAsset: (id: string, destination: string): Promise<void> => command("move_asset", { id, destination }),
   undoLastFileOperation: (): Promise<void> => command("undo_last_file_operation"),
   trashAssets: (ids: string[]): Promise<void> => command("trash_assets", { ids }),
@@ -46,6 +65,7 @@ export const tauriApi = {
   getSettings: (): Promise<Setting[]> => command("get_settings"),
   setSetting: (key: string, value: string): Promise<void> => command("set_setting", { key, value }),
   onJobProgress: (handler: (job: JobProgress) => void): Promise<UnlistenFn> => listen<JobProgress>("job-progress", (event) => handler(event.payload)),
+  onVideoPreviewProgress: (handler: (progress: VideoPreviewProgress) => void): Promise<UnlistenFn> => listen<VideoPreviewProgress>("video-preview-progress", (event) => handler(event.payload)),
   onLibraryChanged: (handler: () => void): Promise<UnlistenFn> => listen("library-changed", handler),
   onSourceDirty: (handler: (sourceId: string) => void): Promise<UnlistenFn> => listen<string>("source-dirty", (event) => handler(event.payload)),
 };
