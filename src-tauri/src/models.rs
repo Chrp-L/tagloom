@@ -217,7 +217,12 @@ pub struct MoodboardEdge {
 #[serde(rename_all = "camelCase")]
 pub struct MoodboardDocument {
     pub id: String,
+    // Kept for v1 clients. It is the first linked context, or an empty string for global boards.
     pub collection_id: String,
+    #[serde(default)]
+    pub collection_ids: Vec<String>,
+    #[serde(default)]
+    pub contexts: Vec<MoodboardContext>,
     pub name: String,
     pub viewport: MoodboardViewport,
     pub background_color: String,
@@ -231,6 +236,8 @@ pub struct MoodboardDocument {
 pub struct MoodboardSummary {
     pub id: String,
     pub collection_id: String,
+    pub collection_ids: Vec<String>,
+    pub contexts: Vec<MoodboardContext>,
     pub name: String,
     pub node_count: i64,
     pub preview_assets: Vec<Asset>,
@@ -241,5 +248,24 @@ pub struct MoodboardSummary {
 #[serde(rename_all = "camelCase")]
 pub struct SaveMoodboardResult {
     pub revision: i64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodboardContext {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoodboardAssetGroup {
+    pub id: String,
+    pub moodboard_id: String,
+    pub name: String,
+    pub position: i64,
+    pub assets: Vec<Asset>,
+    pub created_at: String,
     pub updated_at: String,
 }
