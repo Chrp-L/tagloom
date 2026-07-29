@@ -80,4 +80,9 @@ describe("MoodboardCanvas", () => {
     fireEvent.pointerUp(root, { button: 1 });
     expect(root).not.toHaveClass("middlePanning");
   });
+
+  it("does not offer a swatch insertion control", () => {
+    renderCanvas();
+    expect(screen.queryByRole("button", { name: "Add swatch" })).not.toBeInTheDocument();
+  });
 });

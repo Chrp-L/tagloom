@@ -44,7 +44,7 @@ export function TextNode({ data, selected, id, type }: NodeProps<FlowMoodboardNo
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(moodboardNode.type === "text" ? moodboardNode.data.text : "");
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { if (moodboardNode.type === "text" && !editing) setDraft(moodboardNode.data.text); }, [editing, moodboardNode]);
+  useEffect(() => { if (moodboardNode.type === "text") setDraft(moodboardNode.data.text); }, [moodboardNode]);
   if (moodboardNode.type !== "text") return null;
   const commit = () => { setEditing(false); if (draft !== moodboardNode.data.text) data.onTextCommit(node.id, draft); };
   const begin = () => { if (data.mode !== "select") return; setEditing(true); requestAnimationFrame(() => inputRef.current?.focus()); };

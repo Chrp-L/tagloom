@@ -73,7 +73,7 @@ export function MoodboardWorkspace({ collectionId, collectionName = "Moodboards"
   }, [queryClient]);
   const setRevision = useCallback((revision: number) => setDocument((current) => current ? { ...current, revision } : current), []);
   const onSaveError = useCallback((error: Error, conflict: boolean) => onNotify(conflict ? t("moodboardConflict") : `${t("moodboardSaveError")} ${error.message}`, "error"), [onNotify, t]);
-  const { status, flush } = useMoodboardAutosave({ document, enabled: Boolean(document), onSaved: setRevision, onError: onSaveError });
+  const { status, flush, acceptRemoteDocument } = useMoodboardAutosave({ document, enabled: Boolean(document), onSaved: setRevision, onError: onSaveError });
 
   const changeDocument = useCallback((next: MoodboardDocument) => {
     setDocument((current) => {
@@ -104,9 +104,10 @@ export function MoodboardWorkspace({ collectionId, collectionName = "Moodboards"
   const openBoard = useCallback(async (id: string) => {
     try {
       const next = await api.getMoodboard(id);
+      acceptRemoteDocument(next);
       setHistory([]); setFuture([]); setDocument(next);
     } catch (error) { onNotify(message(error), "error"); }
-  }, [onNotify]);
+  }, [acceptRemoteDocument, onNotify]);
   const closeBoard = useCallback(async () => {
     try { await flush(); } catch { return false; }
     setDocument(undefined); setHistory([]); setFuture([]); setAssetSearch(""); await invalidateBoards();
@@ -124,23 +125,25 @@ export function MoodboardWorkspace({ collectionId, collectionName = "Moodboards"
   const rename = useCallback(async (board: MoodboardSummary, name: string, contextIds?: string[]) => {
     setPending(true);
     try {
+      await flush();
       await api.renameMoodboard(board.id, name);
       if (contextIds) await moodboardService.setMoodboardContexts(board.id, contextIds);
       if (document?.id === board.id) {
         const updated = await api.getMoodboard(board.id);
+        acceptRemoteDocument(updated);
         setDocument(updated); setHistory([]); setFuture([]);
       }
       setRenameBoard(undefined); await invalidateBoards();
     } catch (error) { onNotify(message(error), "error"); } finally { setPending(false); }
-  }, [document, invalidateBoards, onNotify]);
+  }, [acceptRemoteDocument, document, flush, invalidateBoards, onNotify]);
   const remove = useCallback(async (board: MoodboardSummary) => {
     setPending(true);
     try {
       await api.deleteMoodboard(board.id);
-      if (document?.id === board.id) { setDocument(undefined); setHistory([]); setFuture([]); }
+      if (document?.id === board.id) { acceptRemoteDocument(undefined); setDocument(undefined); setHistory([]); setFuture([]); }
       setDeleteBoard(undefined); await invalidateBoards();
     } catch (error) { onNotify(message(error), "error"); } finally { setPending(false); }
-  }, [document?.id, invalidateBoards, onNotify]);
+  }, [acceptRemoteDocument, document?.id, invalidateBoards, onNotify]);
   const exportBoard = useCallback(async () => {
     if (!document || !exportRef.current) return;
     try {
@@ -153,10 +156,12 @@ export function MoodboardWorkspace({ collectionId, collectionName = "Moodboards"
     try {
       const copy = await moodboardService.createMoodboard({ name: `${document.name} copy`, collectionIds: document.collectionIds ?? (document.collectionId ? [document.collectionId] : []) });
       const result = await api.saveMoodboard({ ...document, id: copy.id, name: copy.name, revision: copy.revision }, copy.revision);
-      setDocument({ ...document, id: copy.id, name: copy.name, revision: result.revision });
+      const copiedDocument = { ...document, id: copy.id, name: copy.name, revision: result.revision };
+      acceptRemoteDocument(copiedDocument);
+      setDocument(copiedDocument);
       setHistory([]); setFuture([]); await invalidateBoards();
     } catch (error) { onNotify(message(error), "error"); }
-  }, [document, invalidateBoards, onNotify]);
+  }, [acceptRemoteDocument, document, invalidateBoards, onNotify]);
 
   useEffect(() => {
     onFlushReady?.(flush);
@@ -176,7 +181,7 @@ export function MoodboardWorkspace({ collectionId, collectionName = "Moodboards"
       {status === "conflict" || status === "error" ? <div className="moodboardRecovery" role="alert"><AlertTriangle size={15} /><span>{status === "conflict" ? t("moodboardConflict") : t("moodboardSaveError")}</span><button type="button" onClick={() => void reloadBoard()}><RefreshCw size={14} />{t("reloadMoodboard")}</button>{status === "conflict" && <button type="button" onClick={() => void saveCopy()}>{t("save")}</button>}</div> : null}
       <MoodboardCanvas document={document} contextSections={contextSections} searchResults={globalSearch.data?.items ?? []} search={assetSearch} onSearchChange={setAssetSearch} allAssets={allAssets} saveState={status === "conflict" ? "error" : status} onChange={changeDocument} onPreviewAsset={onPreview} onUndo={undo} onRedo={redo} canUndo={history.length > 0} canRedo={future.length > 0} onExport={() => void exportBoard()} onBoardMenu={() => void closeBoard()} />
       <MoodboardExportScene ref={exportRef} document={document} assets={allAssets} />
-    </> : <><div className="moodboardGlobalFilters"><label>Context<select value={contextFilter ?? ""} onChange={(event) => setContextFilter(event.target.value || undefined)}><option value="">All contexts</option>{collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label></div><MoodboardList collectionName={collectionName} boards={boards.data ?? []} loading={boards.isLoading} error={boards.error ? message(boards.error) : undefined} onOpen={(id) => void openBoard(id)} onCreate={() => { setCreateContextIds(contextFilter ? [contextFilter] : []); setCreateOpen(true); }} onRename={(board) => { setRenameBoard(board); setRenameContextIds(board.contexts?.map((context) => context.id) ?? (collectionId ? [collectionId] : [])); }} onDelete={setDeleteBoard} labels={{ heading: t("moodboards"), create: t("newMoodboard"), open: t("openMoodboard"), rename: t("renameMoodboard"), delete: t("deleteMoodboard"), nodesCount: (count) => t("moodboardNodes", { count }), updated: (date) => t("moodboardUpdated", { date }), emptyTitle: t("moodboardEmptyTitle"), emptyDescription: t("moodboardEmptyDescription") }} /></>}
+    </> : <MoodboardList collectionName={collectionName} boards={boards.data ?? []} loading={boards.isLoading} error={boards.error ? message(boards.error) : undefined} onOpen={(id) => void openBoard(id)} onCreate={() => { setCreateContextIds(contextFilter ? [contextFilter] : []); setCreateOpen(true); }} onRename={(board) => { setRenameBoard(board); setRenameContextIds(board.contexts?.map((context) => context.id) ?? (collectionId ? [collectionId] : [])); }} onDelete={setDeleteBoard} labels={{ heading: t("moodboards"), create: t("newMoodboard"), open: t("openMoodboard"), rename: t("renameMoodboard"), delete: t("deleteMoodboard"), nodesCount: (count) => t("moodboardNodes", { count }), updated: (date) => t("moodboardUpdated", { date }), emptyTitle: t("moodboardEmptyTitle"), emptyDescription: t("moodboardEmptyDescription") }} />}
     <MoodboardCreateDialog open={createOpen} pending={pending} collections={collections} selectedCollectionIds={createContextIds} onSelectedCollectionIdsChange={setCreateContextIds} onOpenChange={setCreateOpen} onCreate={(name, contextIds) => void createBoard(name, contextIds)} labels={{ createTitle: t("newMoodboard"), name: t("name"), create: t("create"), cancel: t("cancel"), close: t("close") }} />
     <MoodboardRenameDialog open={Boolean(renameBoard)} board={renameBoard} pending={pending} collections={collections} selectedCollectionIds={renameContextIds} onSelectedCollectionIdsChange={setRenameContextIds} onOpenChange={(open) => { if (!open) setRenameBoard(undefined); }} onRename={(board, name, contextIds) => void rename(board, name, contextIds)} labels={{ renameTitle: t("renameMoodboard"), name: t("name"), save: t("save"), cancel: t("cancel"), close: t("close") }} />
     <MoodboardDeleteDialog open={Boolean(deleteBoard)} board={deleteBoard} pending={pending} onOpenChange={(open) => { if (!open) setDeleteBoard(undefined); }} onDelete={(board) => void remove(board)} labels={{ deleteTitle: t("moodboardDeleteTitle"), deleteDescription: (name) => t("moodboardDeleteDescription", { name }), delete: t("deleteMoodboard"), cancel: t("cancel"), close: t("close") }} />

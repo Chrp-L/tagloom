@@ -21,4 +21,18 @@ describe("useMoodboardAutosave", () => {
     expect(save).toHaveBeenCalledTimes(1);
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ name: "Board two" }), 2);
   });
+
+  it("adopts a renamed document without treating it as a local edit", async () => {
+    vi.useFakeTimers();
+    const save = vi.spyOn(api, "saveMoodboard").mockResolvedValue({ revision: 4, updatedAt: "now" });
+    const { result, rerender } = renderHook(({ value }) => useMoodboardAutosave({ document: value, enabled: true, onSaved: vi.fn(), onError: vi.fn() }), { initialProps: { value: document } });
+    const renamed = { ...document, name: "Renamed board", revision: 3 };
+
+    act(() => result.current.acceptRemoteDocument(renamed));
+    rerender({ value: renamed });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+
+    expect(save).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("saved");
+  });
 });

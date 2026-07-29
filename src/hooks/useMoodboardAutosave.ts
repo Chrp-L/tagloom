@@ -63,6 +63,18 @@ export function useMoodboardAutosave({ document, enabled, onSaved, onError }: Op
     await enqueue(documentRef.current);
   }, [enqueue]);
 
+  const acceptRemoteDocument = useCallback((next?: MoodboardDocument) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+    }
+    documentRef.current = next;
+    documentIdRef.current = next?.id;
+    revisionRef.current = next?.revision;
+    savedSignatureRef.current = next ? serialized(next) : undefined;
+    setStatus("saved");
+  }, []);
+
   useEffect(() => {
     documentRef.current = document;
     if (!document || !enabled) return;
@@ -84,5 +96,5 @@ export function useMoodboardAutosave({ document, enabled, onSaved, onError }: Op
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
-  return { status, flush };
+  return { status, flush, acceptRemoteDocument };
 }
