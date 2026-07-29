@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFlowNodeChanges, autoLayoutAssets, toFlowNodes } from "./model";
+import { applyFlowNodeChanges, autoLayoutAssets, findMoodboardGuides, isValidMoodboardConnection, toFlowNodes } from "./model";
 import type { Asset, MoodboardDocument } from "../../types";
 
 const asset = (id: string, width: number, height: number): Asset => ({ id, sourceId: "source", path: `C:/assets/${id}.jpg`, filename: `${id}.jpg`, extension: "jpg", mediaKind: "image", byteSize: 1, modifiedAt: "2026-01-01", width, height, note: "", status: "ready", tags: [] });
@@ -14,9 +14,20 @@ describe("moodboard canvas model", () => {
   });
 
   it("persists flow position changes without changing node content", () => {
-    const nodes = toFlowNodes(document, [], false, () => undefined);
+    const nodes = toFlowNodes(document, [], false, () => undefined, () => undefined);
     const next = applyFlowNodeChanges([{ id: "text", type: "position", position: { x: 99.8, y: 41.1 } }], document, nodes);
     expect(next.nodes[0]).toMatchObject({ position: { x: 100, y: 41 }, data: document.nodes[0].data });
     expect(next.edges).toEqual([]);
+  });
+
+  it("rejects self and duplicate connections", () => {
+    expect(isValidMoodboardConnection({ source: "a", target: "a" }, [])).toBe(false);
+    expect(isValidMoodboardConnection({ source: "a", target: "b" }, [{ id: "edge", sourceNodeId: "a", targetNodeId: "b", color: "neutral" }])).toBe(false);
+    expect(isValidMoodboardConnection({ source: "a", target: "b" }, [])).toBe(true);
+  });
+
+  it("finds nearby center alignment guides", () => {
+    const guides = findMoodboardGuides({ id: "a", position: { x: 99, y: 200 }, size: { width: 100, height: 80 } }, [{ id: "b", position: { x: 100, y: 350 }, size: { width: 100, height: 80 } }]);
+    expect(guides).toEqual({ x: 100, y: undefined });
   });
 });

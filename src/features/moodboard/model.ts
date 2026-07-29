@@ -5,7 +5,8 @@ export type FlowNodeData = {
   moodboardNode: MoodboardNode;
   asset?: Asset;
   connecting: boolean;
-  onTextChange: (id: string, text: string) => void;
+  onTextCommit: (id: string, text: string) => void;
+  onResizeEnd: (id: string) => void;
 };
 
 export type FlowMoodboardNode = Node<FlowNodeData, "asset" | "text" | "swatch">;
@@ -22,7 +23,7 @@ export function createMoodboardId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-export function toFlowNodes(document: MoodboardDocument, assets: Asset[], connecting: boolean, onTextChange: FlowNodeData["onTextChange"]): FlowMoodboardNode[] {
+export function toFlowNodes(document: MoodboardDocument, assets: Asset[], connecting: boolean, onTextCommit: FlowNodeData["onTextCommit"], onResizeEnd: FlowNodeData["onResizeEnd"]): FlowMoodboardNode[] {
   const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
   return document.nodes.map((node) => ({
     id: node.id,
@@ -35,9 +36,34 @@ export function toFlowNodes(document: MoodboardDocument, assets: Asset[], connec
       moodboardNode: node,
       asset: node.type === "asset" && node.data.assetId ? assetsById.get(node.data.assetId) : undefined,
       connecting,
-      onTextChange,
+      onTextCommit,
+      onResizeEnd,
     },
   }));
+}
+
+export function isValidMoodboardConnection(connection: { source?: string | null; target?: string | null }, edges: MoodboardEdge[]): boolean {
+  if (!connection.source || !connection.target || connection.source === connection.target) return false;
+  return !edges.some((edge) => edge.sourceNodeId === connection.source && edge.targetNodeId === connection.target);
+}
+
+export interface MoodboardGuides { x?: number; y?: number; }
+
+export function findMoodboardGuides(dragged: Pick<MoodboardNode, "id" | "position" | "size">, nodes: Pick<MoodboardNode, "id" | "position" | "size">[], tolerance = 6): MoodboardGuides {
+  const xCandidates = [dragged.position.x, dragged.position.x + dragged.size.width / 2, dragged.position.x + dragged.size.width];
+  const yCandidates = [dragged.position.y, dragged.position.y + dragged.size.height / 2, dragged.position.y + dragged.size.height];
+  let bestX: number | undefined;
+  let bestY: number | undefined;
+  let xDistance = tolerance + 1;
+  let yDistance = tolerance + 1;
+  for (const node of nodes) {
+    if (node.id === dragged.id) continue;
+    const otherX = [node.position.x, node.position.x + node.size.width / 2, node.position.x + node.size.width];
+    const otherY = [node.position.y, node.position.y + node.size.height / 2, node.position.y + node.size.height];
+    for (const value of xCandidates) for (const candidate of otherX) if (Math.abs(value - candidate) < xDistance) { xDistance = Math.abs(value - candidate); bestX = candidate; }
+    for (const value of yCandidates) for (const candidate of otherY) if (Math.abs(value - candidate) < yDistance) { yDistance = Math.abs(value - candidate); bestY = candidate; }
+  }
+  return { x: bestX, y: bestY };
 }
 
 export function toFlowEdges(document: MoodboardDocument): FlowMoodboardEdge[] {
