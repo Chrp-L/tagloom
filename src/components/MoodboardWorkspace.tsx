@@ -1,13 +1,12 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { MoodboardExportScene, exportMoodboardPng } from "../features/moodboardExport/MoodboardExportScene";
 import { useMoodboardAutosave } from "../hooks/useMoodboardAutosave";
 import type { Asset, Collection, MoodboardDocument, MoodboardSummary } from "../types";
 import { MoodboardCanvas } from "./moodboard/MoodboardCanvas";
-import { MoodboardAssetGroupsProvider, type MoodboardAssetGroup } from "./moodboard/MoodboardAssetDrawer";
 import { MoodboardCreateDialog, MoodboardDeleteDialog, MoodboardRenameDialog } from "./moodboard/MoodboardDialogs";
 import { MoodboardList, type MoodboardListItem } from "./moodboard/MoodboardList";
 import "../styles/moodboard-workspace.css";
@@ -25,11 +24,6 @@ type MoodboardService = {
   listMoodboards: (filter?: { collectionId?: string }) => Promise<MoodboardListItem[]>;
   createMoodboard: (input: { name?: string; collectionIds?: string[] }) => Promise<MoodboardDocument>;
   setMoodboardContexts: (id: string, collectionIds: string[]) => Promise<void>;
-  listMoodboardAssetGroups: (moodboardId: string) => Promise<MoodboardAssetGroup[]>;
-  createMoodboardAssetGroup: (moodboardId: string, name: string) => Promise<MoodboardAssetGroup>;
-  renameMoodboardAssetGroup: (id: string, name: string) => Promise<void>;
-  deleteMoodboardAssetGroup: (id: string) => Promise<void>;
-  setMoodboardAssetGroupAssets: (id: string, assetIds: string[]) => Promise<void>;
 };
 
 const moodboardService = api as unknown as MoodboardService;
@@ -52,23 +46,34 @@ export function MoodboardWorkspace({ collectionId, collectionName = "Moodboards"
   const [contextFilter, setContextFilter] = useState<string | undefined>(collectionId);
   const [createContextIds, setCreateContextIds] = useState<string[]>(collectionId ? [collectionId] : []);
   const [renameContextIds, setRenameContextIds] = useState<string[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string>();
+  const [assetSearch, setAssetSearch] = useState("");
+  const deferredAssetSearch = useDeferredValue(assetSearch);
   const boards = useQuery({ queryKey: ["moodboards", contextFilter ?? "all"], queryFn: () => moodboardService.listMoodboards(contextFilter ? { collectionId: contextFilter } : undefined) });
-  const libraryAssets = useQuery({ queryKey: ["moodboard-library-assets"], queryFn: () => api.listAssets({ limit: 120, sort: "newest" }), enabled: Boolean(document) });
+  const libraryAssets = useQuery({ queryKey: ["moodboard-library-assets"], queryFn: () => api.listAssets({ limit: 500, sort: "newest" }), enabled: Boolean(document) });
+  const contextRefs = useMemo(() => {
+    if (!document) return [];
+    if (document.contexts?.length) return document.contexts;
+    const ids = document.collectionIds ?? (document.collectionId ? [document.collectionId] : []);
+    return ids.map((id) => ({ id, name: collections.find((collection) => collection.id === id)?.name ?? "Unknown context" }));
+  }, [collections, document]);
+  const contextAssetQueries = useQueries({
+    queries: contextRefs.map((context) => ({
+      queryKey: ["moodboard-context-assets", context.id],
+      queryFn: () => api.listAssets({ collectionId: context.id, limit: 500, sort: "newest" }),
+    })),
+  });
+  const globalSearch = useQuery({
+    queryKey: ["moodboard-asset-search", deferredAssetSearch.trim()],
+    queryFn: () => api.listAssets({ search: deferredAssetSearch.trim(), limit: 120, sort: "newest" }),
+    enabled: Boolean(document && deferredAssetSearch.trim()),
+  });
 
   const invalidateBoards = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["moodboards"] });
   }, [queryClient]);
-  const groups = useQuery({ queryKey: ["moodboard-asset-groups", document?.id], queryFn: () => moodboardService.listMoodboardAssetGroups(document!.id), enabled: Boolean(document) });
-  const invalidateGroups = useCallback(async () => { await queryClient.invalidateQueries({ queryKey: ["moodboard-asset-groups", document?.id] }); }, [document?.id, queryClient]);
   const setRevision = useCallback((revision: number) => setDocument((current) => current ? { ...current, revision } : current), []);
   const onSaveError = useCallback((error: Error, conflict: boolean) => onNotify(conflict ? t("moodboardConflict") : `${t("moodboardSaveError")} ${error.message}`, "error"), [onNotify, t]);
   const { status, flush } = useMoodboardAutosave({ document, enabled: Boolean(document), onSaved: setRevision, onError: onSaveError });
-
-  useEffect(() => {
-    const available = groups.data ?? [];
-    if (available.length && !available.some((group) => group.id === selectedGroupId)) setSelectedGroupId(available[0].id);
-  }, [groups.data, selectedGroupId]);
 
   const changeDocument = useCallback((next: MoodboardDocument) => {
     setDocument((current) => {
@@ -104,7 +109,7 @@ export function MoodboardWorkspace({ collectionId, collectionName = "Moodboards"
   }, [onNotify]);
   const closeBoard = useCallback(async () => {
     try { await flush(); } catch { return false; }
-    setDocument(undefined); setHistory([]); setFuture([]); setSelectedGroupId(undefined); await invalidateBoards();
+    setDocument(undefined); setHistory([]); setFuture([]); setAssetSearch(""); await invalidateBoards();
     return true;
   }, [flush, invalidateBoards]);
   const reloadBoard = useCallback(async () => { if (document) await openBoard(document.id); }, [document, openBoard]);
@@ -146,28 +151,30 @@ export function MoodboardWorkspace({ collectionId, collectionName = "Moodboards"
   const saveCopy = useCallback(async () => {
     if (!document) return;
     try {
-      const copy = await moodboardService.createMoodboard({ name: `${document.name} copy`, collectionIds: collectionId ? [collectionId] : undefined });
+      const copy = await moodboardService.createMoodboard({ name: `${document.name} copy`, collectionIds: document.collectionIds ?? (document.collectionId ? [document.collectionId] : []) });
       const result = await api.saveMoodboard({ ...document, id: copy.id, name: copy.name, revision: copy.revision }, copy.revision);
       setDocument({ ...document, id: copy.id, name: copy.name, revision: result.revision });
       setHistory([]); setFuture([]); await invalidateBoards();
     } catch (error) { onNotify(message(error), "error"); }
-  }, [collectionId, document, invalidateBoards, onNotify]);
-  const createGroup = useCallback(async (name: string) => { if (!document) return; try { await moodboardService.createMoodboardAssetGroup(document.id, name); await invalidateGroups(); } catch (error) { onNotify(message(error), "error"); } }, [document, invalidateGroups, onNotify]);
-  const renameGroup = useCallback(async (group: MoodboardAssetGroup, name: string) => { try { await moodboardService.renameMoodboardAssetGroup(group.id, name); await invalidateGroups(); } catch (error) { onNotify(message(error), "error"); } }, [invalidateGroups, onNotify]);
-  const deleteGroup = useCallback(async (group: MoodboardAssetGroup) => { try { await moodboardService.deleteMoodboardAssetGroup(group.id); if (selectedGroupId === group.id) setSelectedGroupId(undefined); await invalidateGroups(); } catch (error) { onNotify(message(error), "error"); } }, [invalidateGroups, onNotify, selectedGroupId]);
-  const setGroupAssets = useCallback(async (group: MoodboardAssetGroup, assets: Asset[]) => { try { await moodboardService.setMoodboardAssetGroupAssets(group.id, assets.map((asset) => asset.id)); await invalidateGroups(); } catch (error) { onNotify(message(error), "error"); } }, [invalidateGroups, onNotify]);
+  }, [document, invalidateBoards, onNotify]);
 
   useEffect(() => {
     onFlushReady?.(flush);
     return () => onFlushReady?.(undefined);
   }, [flush, onFlushReady]);
-  const allAssets = libraryAssets.data?.items ?? [];
-  const selectedGroupAssets = (groups.data ?? []).find((group) => group.id === selectedGroupId)?.assets ?? [];
+  const contextSections = useMemo(() => contextRefs.map((context, index) => ({ id: context.id, name: context.name, assets: contextAssetQueries[index]?.data?.items ?? [] })), [contextAssetQueries, contextRefs]);
+  const allAssets = useMemo(() => {
+    const assetsById = new Map<string, Asset>();
+    for (const asset of libraryAssets.data?.items ?? []) assetsById.set(asset.id, asset);
+    for (const section of contextSections) for (const asset of section.assets) assetsById.set(asset.id, asset);
+    for (const asset of globalSearch.data?.items ?? []) assetsById.set(asset.id, asset);
+    return [...assetsById.values()];
+  }, [contextSections, globalSearch.data?.items, libraryAssets.data?.items]);
   return <section className="moodboardWorkspace">
     {document && <header className="moodboardContextHeader"><button className="moodboardBackButton" type="button" onClick={() => void closeBoard()}><ArrowLeft size={15} />{t("moodboards")}</button></header>}
     {document ? <>
       {status === "conflict" || status === "error" ? <div className="moodboardRecovery" role="alert"><AlertTriangle size={15} /><span>{status === "conflict" ? t("moodboardConflict") : t("moodboardSaveError")}</span><button type="button" onClick={() => void reloadBoard()}><RefreshCw size={14} />{t("reloadMoodboard")}</button>{status === "conflict" && <button type="button" onClick={() => void saveCopy()}>{t("save")}</button>}</div> : null}
-      <MoodboardAssetGroupsProvider controls={{ groups: groups.data ?? [], selectedGroupId, onSelectGroup: setSelectedGroupId, onCreateGroup: (name) => void createGroup(name), onRenameGroup: (group, name) => void renameGroup(group, name), onDeleteGroup: (group) => void deleteGroup(group), onAddAssetsToGroup: (group, assets) => void setGroupAssets(group, assets) }}><MoodboardCanvas document={document} collectionAssets={selectedGroupAssets} allAssets={allAssets} saveState={status === "conflict" ? "error" : status} onChange={changeDocument} onPreviewAsset={onPreview} onUndo={undo} onRedo={redo} canUndo={history.length > 0} canRedo={future.length > 0} onExport={() => void exportBoard()} onBoardMenu={() => void closeBoard()} /></MoodboardAssetGroupsProvider>
+      <MoodboardCanvas document={document} contextSections={contextSections} searchResults={globalSearch.data?.items ?? []} search={assetSearch} onSearchChange={setAssetSearch} allAssets={allAssets} saveState={status === "conflict" ? "error" : status} onChange={changeDocument} onPreviewAsset={onPreview} onUndo={undo} onRedo={redo} canUndo={history.length > 0} canRedo={future.length > 0} onExport={() => void exportBoard()} onBoardMenu={() => void closeBoard()} />
       <MoodboardExportScene ref={exportRef} document={document} assets={allAssets} />
     </> : <><div className="moodboardGlobalFilters"><label>Context<select value={contextFilter ?? ""} onChange={(event) => setContextFilter(event.target.value || undefined)}><option value="">All contexts</option>{collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label></div><MoodboardList collectionName={collectionName} boards={boards.data ?? []} loading={boards.isLoading} error={boards.error ? message(boards.error) : undefined} onOpen={(id) => void openBoard(id)} onCreate={() => { setCreateContextIds(contextFilter ? [contextFilter] : []); setCreateOpen(true); }} onRename={(board) => { setRenameBoard(board); setRenameContextIds(board.contexts?.map((context) => context.id) ?? (collectionId ? [collectionId] : [])); }} onDelete={setDeleteBoard} labels={{ heading: t("moodboards"), create: t("newMoodboard"), open: t("openMoodboard"), rename: t("renameMoodboard"), delete: t("deleteMoodboard"), nodesCount: (count) => t("moodboardNodes", { count }), updated: (date) => t("moodboardUpdated", { date }), emptyTitle: t("moodboardEmptyTitle"), emptyDescription: t("moodboardEmptyDescription") }} /></>}
     <MoodboardCreateDialog open={createOpen} pending={pending} collections={collections} selectedCollectionIds={createContextIds} onSelectedCollectionIdsChange={setCreateContextIds} onOpenChange={setCreateOpen} onCreate={(name, contextIds) => void createBoard(name, contextIds)} labels={{ createTitle: t("newMoodboard"), name: t("name"), create: t("create"), cancel: t("cancel"), close: t("close") }} />

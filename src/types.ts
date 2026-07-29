@@ -166,12 +166,19 @@ export interface MoodboardSwatchNode {
 
 export type MoodboardNode = MoodboardAssetNode | MoodboardTextNode | MoodboardSwatchNode;
 
+export type MoodboardHandlePosition = "top" | "right" | "bottom" | "left";
+
+export interface MoodboardEdgeConfig {
+  sourceHandle?: MoodboardHandlePosition;
+  targetHandle?: MoodboardHandlePosition;
+}
+
 export interface MoodboardEdge {
   id: string;
   sourceNodeId: string;
   targetNodeId: string;
   color: "neutral" | "coral" | "green" | "gold";
-  config?: Record<string, never>;
+  config?: MoodboardEdgeConfig;
 }
 
 export interface MoodboardSummary {
@@ -207,16 +214,6 @@ export interface MoodboardDocument {
 
 export interface SaveMoodboardResult {
   revision: number;
-  updatedAt: string;
-}
-
-export interface MoodboardAssetGroup {
-  id: string;
-  moodboardId: string;
-  name: string;
-  position: number;
-  assets: Asset[];
-  createdAt: string;
   updatedAt: string;
 }
 

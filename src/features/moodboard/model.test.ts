@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFlowNodeChanges, autoLayoutAssets, findMoodboardGuides, isValidMoodboardConnection, toFlowNodes } from "./model";
+import { applyFlowNodeChanges, autoLayoutAssets, edgePortConfig, findMoodboardGuides, flowEdgesToDocument, isValidMoodboardConnection, nearestMoodboardPort, toFlowNodes } from "./model";
 import type { Asset, MoodboardDocument } from "../../types";
 
 const asset = (id: string, width: number, height: number): Asset => ({ id, sourceId: "source", path: `C:/assets/${id}.jpg`, filename: `${id}.jpg`, extension: "jpg", mediaKind: "image", byteSize: 1, modifiedAt: "2026-01-01", width, height, note: "", status: "ready", tags: [] });
@@ -14,7 +14,7 @@ describe("moodboard canvas model", () => {
   });
 
   it("persists flow position changes without changing node content", () => {
-    const nodes = toFlowNodes(document, [], false, () => undefined, () => undefined);
+    const nodes = toFlowNodes(document, [], "select", () => undefined, () => undefined, () => undefined);
     const next = applyFlowNodeChanges([{ id: "text", type: "position", position: { x: 99.8, y: 41.1 } }], document, nodes);
     expect(next.nodes[0]).toMatchObject({ position: { x: 100, y: 41 }, data: document.nodes[0].data });
     expect(next.edges).toEqual([]);
@@ -29,5 +29,16 @@ describe("moodboard canvas model", () => {
   it("finds nearby center alignment guides", () => {
     const guides = findMoodboardGuides({ id: "a", position: { x: 99, y: 200 }, size: { width: 100, height: 80 } }, [{ id: "b", position: { x: 100, y: 350 }, size: { width: 100, height: 80 } }]);
     expect(guides).toEqual({ x: 100, y: undefined });
+  });
+
+  it("uses persisted handles and maps legacy edges to nearest sides", () => {
+    const nodes = [
+      { ...document.nodes[0], id: "a", position: { x: 0, y: 0 } },
+      { ...document.nodes[0], id: "b", position: { x: 400, y: 40 } },
+    ];
+    const edge = { id: "edge", sourceNodeId: "a", targetNodeId: "b", color: "neutral" as const };
+    expect(nearestMoodboardPort(nodes[0], nodes[1])).toBe("right");
+    expect(edgePortConfig(edge, nodes)).toEqual({ sourceHandle: "right", targetHandle: "left" });
+    expect(flowEdgesToDocument([{ id: "edge", source: "a", target: "b", sourceHandle: "bottom", targetHandle: "top", type: "moodboard", data: { moodboardEdge: edge } }], { ...document, nodes, edges: [edge] }).edges[0].config).toEqual({ sourceHandle: "bottom", targetHandle: "top" });
   });
 });

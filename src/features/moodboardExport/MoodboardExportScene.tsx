@@ -1,6 +1,7 @@
 import { forwardRef, useMemo } from "react";
 import { api, mediaUrl } from "../../api";
-import type { Asset, MoodboardDocument } from "../../types";
+import { edgePortConfig } from "../moodboard/model";
+import type { Asset, MoodboardDocument, MoodboardHandlePosition, MoodboardNode } from "../../types";
 
 const EXPORT_PADDING = 64;
 const MAX_EXPORT_SIDE = 8192;
@@ -27,9 +28,24 @@ export function moodboardExportBounds(document: MoodboardDocument): ExportBounds
   return { minX, minY, width: Math.max(1, maxX - minX) + EXPORT_PADDING * 2, height: Math.max(1, maxY - minY) + EXPORT_PADDING * 2 };
 }
 
-function edgePath(source: { x: number; y: number }, target: { x: number; y: number }) {
-  const bend = Math.max(40, Math.abs(target.x - source.x) * 0.42);
-  return `M ${source.x} ${source.y} C ${source.x + bend} ${source.y}, ${target.x - bend} ${target.y}, ${target.x} ${target.y}`;
+const portVectors: Record<MoodboardHandlePosition, { x: number; y: number }> = {
+  top: { x: 0, y: -1 }, right: { x: 1, y: 0 }, bottom: { x: 0, y: 1 }, left: { x: -1, y: 0 },
+};
+
+function portPoint(node: MoodboardNode, port: MoodboardHandlePosition, bounds: ExportBounds) {
+  const left = node.position.x - bounds.minX + EXPORT_PADDING;
+  const top = node.position.y - bounds.minY + EXPORT_PADDING;
+  if (port === "top") return { x: left + node.size.width / 2, y: top };
+  if (port === "right") return { x: left + node.size.width, y: top + node.size.height / 2 };
+  if (port === "bottom") return { x: left + node.size.width / 2, y: top + node.size.height };
+  return { x: left, y: top + node.size.height / 2 };
+}
+
+function edgePath(source: { x: number; y: number }, sourcePort: MoodboardHandlePosition, target: { x: number; y: number }, targetPort: MoodboardHandlePosition) {
+  const bend = Math.min(48, Math.max(30, Math.hypot(target.x - source.x, target.y - source.y) * 0.26));
+  const sourceVector = portVectors[sourcePort];
+  const targetVector = portVectors[targetPort];
+  return `M ${source.x} ${source.y} C ${source.x + sourceVector.x * bend} ${source.y + sourceVector.y * bend}, ${target.x + targetVector.x * bend} ${target.y + targetVector.y * bend}, ${target.x} ${target.y}`;
 }
 
 const edgeColors = { neutral: "#8b938e", coral: "#ed6758", green: "#3f8f74", gold: "#d4a43d" } as const;
@@ -44,9 +60,8 @@ export const MoodboardExportScene = forwardRef<HTMLDivElement, { document: Moodb
         const source = nodeMap.get(edge.sourceNodeId);
         const target = nodeMap.get(edge.targetNodeId);
         if (!source || !target) return null;
-        const sourceCenter = { x: source.position.x - bounds.minX + EXPORT_PADDING + source.size.width / 2, y: source.position.y - bounds.minY + EXPORT_PADDING + source.size.height / 2 };
-        const targetCenter = { x: target.position.x - bounds.minX + EXPORT_PADDING + target.size.width / 2, y: target.position.y - bounds.minY + EXPORT_PADDING + target.size.height / 2 };
-        return <path key={edge.id} d={edgePath(sourceCenter, targetCenter)} fill="none" stroke={edgeColors[edge.color]} strokeWidth="1.5" />;
+        const ports = edgePortConfig(edge, document.nodes);
+        return <path key={edge.id} d={edgePath(portPoint(source, ports.sourceHandle, bounds), ports.sourceHandle, portPoint(target, ports.targetHandle, bounds), ports.targetHandle)} fill="none" stroke={edgeColors[edge.color]} strokeWidth="1.5" />;
       })}
     </svg>
     {document.nodes.map((node) => {

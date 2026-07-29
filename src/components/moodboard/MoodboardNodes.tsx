@@ -2,55 +2,61 @@ import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
 import { Film, ImageOff, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { mediaUrl } from "../../api";
-import type { FlowMoodboardNode } from "../../features/moodboard/model";
+import { MOODBOARD_PORTS, type FlowMoodboardNode } from "../../features/moodboard/model";
+import type { MoodboardHandlePosition } from "../../types";
 
-function ConnectionHandles({ visible }: { visible: boolean }) {
-  return <>
-    <Handle className={visible ? "moodboardHandle visible" : "moodboardHandle"} type="target" position={Position.Top} />
-    <Handle className={visible ? "moodboardHandle visible" : "moodboardHandle"} type="source" position={Position.Bottom} />
-  </>;
+const POSITION: Record<MoodboardHandlePosition, Position> = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
+
+type NodeShell = Pick<FlowMoodboardNode, "id" | "type" | "data">;
+
+function LoosePorts({ node, visible }: { node: NodeShell; visible: boolean }) {
+  if (!visible) return null;
+  return <>{MOODBOARD_PORTS.map((port) => <span key={port} className={`moodboardCanvasPort moodboardCanvasPort-${port}`}>
+    <Handle id={port} type="source" position={POSITION[port]} className="moodboardCanvasPortSource" onClick={(event) => { event.stopPropagation(); node.data.onPortClick(node.id, port); }} />
+  </span>)}</>;
 }
 
-export function AssetNode({ data, selected }: NodeProps<FlowMoodboardNode>) {
-  const node = data.moodboardNode;
-  if (node.type !== "asset") return null;
-  const src = data.asset?.thumbnailPath ?? node.data.assetSnapshot?.thumbnailPath;
-  const filename = data.asset?.filename ?? node.data.assetSnapshot?.filename ?? "Missing asset";
-  const isVideo = data.asset?.mediaKind ?? node.data.assetSnapshot?.mediaKind;
-  return <div className={`moodboardNode moodboardAssetNode ${selected ? "selected" : ""}`}>
-    <NodeResizer isVisible={selected} minWidth={120} minHeight={100} keepAspectRatio color="var(--accent)" onResizeEnd={() => data.onResizeEnd(node.id)} />
-    <ConnectionHandles visible={selected || data.connecting} />
-    {src ? <img draggable={false} src={mediaUrl(src)} alt={filename} style={{ objectFit: node.data.fit }} /> : <span className="moodboardMissingAsset"><ImageOff size={22} /><small>{filename}</small></span>}
-    {isVideo === "video" && <span className="moodboardVideoMark"><Play size={11} fill="currentColor" /></span>}
-    {isVideo === "video" && !src && <Film size={13} className="moodboardMissingVideo" />}
+function NodeFrame({ node, selected, children }: { node: NodeShell; selected: boolean; children: React.ReactNode }) {
+  const selectable = node.data.mode === "select";
+  return <div className={`moodboardCanvasNode moodboardCanvasNode-${node.type} ${selected ? "selected" : ""} ${node.data.mode === "connect" ? "connectMode" : ""}`}>
+    <NodeResizer isVisible={selectable && selected} minWidth={node.type === "asset" ? 120 : node.type === "text" ? 140 : 108} minHeight={node.type === "asset" ? 100 : node.type === "text" ? 54 : 84} keepAspectRatio={node.type === "asset"} color="var(--accent)" onResizeEnd={() => node.data.onResizeEnd(node.id)} />
+    <LoosePorts node={node} visible={node.data.mode === "connect"} />
+    {children}
   </div>;
 }
 
-export function TextNode({ data, selected }: NodeProps<FlowMoodboardNode>) {
-  const node = data.moodboardNode;
+export function AssetNode({ data, selected, id, type }: NodeProps<FlowMoodboardNode>) {
+  const node: NodeShell = { id, type, data };
+  const moodboardNode = data.moodboardNode;
+  if (moodboardNode.type !== "asset") return null;
+  const src = data.asset?.thumbnailPath ?? moodboardNode.data.assetSnapshot?.thumbnailPath;
+  const filename = data.asset?.filename ?? moodboardNode.data.assetSnapshot?.filename ?? "Missing asset";
+  const isVideo = data.asset?.mediaKind ?? moodboardNode.data.assetSnapshot?.mediaKind;
+  return <NodeFrame node={node} selected={selected}><div className="moodboardCanvasAssetMedia">
+    {src ? <img draggable={false} src={mediaUrl(src)} alt={filename} style={{ objectFit: moodboardNode.data.fit }} /> : <span className="moodboardCanvasMissingAsset"><ImageOff size={22} /><small>{filename}</small></span>}
+    {isVideo === "video" && <span className="moodboardCanvasVideoMark"><Play size={11} fill="currentColor" /></span>}
+    {isVideo === "video" && !src && <Film size={13} className="moodboardCanvasMissingVideo" />}
+  </div></NodeFrame>;
+}
+
+export function TextNode({ data, selected, id, type }: NodeProps<FlowMoodboardNode>) {
+  const node: NodeShell = { id, type, data };
+  const moodboardNode = data.moodboardNode;
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(node.type === "text" ? node.data.text : "");
+  const [draft, setDraft] = useState(moodboardNode.type === "text" ? moodboardNode.data.text : "");
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { if (node.type === "text" && !editing) setDraft(node.data.text); }, [editing, node]);
-  if (node.type !== "text") return null;
-  const commit = () => {
-    setEditing(false);
-    if (draft !== node.data.text) data.onTextCommit(node.id, draft);
-  };
-  const begin = () => { setEditing(true); requestAnimationFrame(() => inputRef.current?.focus()); };
-  return <div className={`moodboardNode moodboardTextNode ${selected ? "selected" : ""}`} style={{ color: node.data.color, textAlign: node.data.align }}>
-    <NodeResizer isVisible={selected} minWidth={140} minHeight={54} color="var(--accent)" onResizeEnd={() => data.onResizeEnd(node.id)} />
-    <ConnectionHandles visible={selected || data.connecting} />
-    <textarea ref={inputRef} className={`nodrag nopan moodboardTextInput ${node.data.fontSize}`} value={draft} readOnly={!editing} aria-label="Text node" onDoubleClick={begin} onBlur={commit} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setDraft(node.data.text); setEditing(false); inputRef.current?.blur(); } if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); commit(); inputRef.current?.blur(); } }} />
-  </div>;
+  useEffect(() => { if (moodboardNode.type === "text" && !editing) setDraft(moodboardNode.data.text); }, [editing, moodboardNode]);
+  if (moodboardNode.type !== "text") return null;
+  const commit = () => { setEditing(false); if (draft !== moodboardNode.data.text) data.onTextCommit(node.id, draft); };
+  const begin = () => { if (data.mode !== "select") return; setEditing(true); requestAnimationFrame(() => inputRef.current?.focus()); };
+  return <NodeFrame node={node} selected={selected}><div className="moodboardCanvasTextMedia" style={{ color: moodboardNode.data.color, textAlign: moodboardNode.data.align }}>
+    <textarea ref={inputRef} className={`nodrag nopan moodboardCanvasTextInput ${moodboardNode.data.fontSize}`} value={draft} readOnly={!editing} aria-label="Text node" onDoubleClick={begin} onBlur={commit} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setDraft(moodboardNode.data.text); setEditing(false); inputRef.current?.blur(); } else if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); commit(); inputRef.current?.blur(); } }} />
+  </div></NodeFrame>;
 }
 
-export function SwatchNode({ data, selected }: NodeProps<FlowMoodboardNode>) {
-  const node = data.moodboardNode;
-  if (node.type !== "swatch") return null;
-  return <div className={`moodboardNode moodboardSwatchNode ${selected ? "selected" : ""}`} style={{ background: node.data.color }}>
-    <NodeResizer isVisible={selected} minWidth={108} minHeight={84} color="var(--accent)" onResizeEnd={() => data.onResizeEnd(node.id)} />
-    <ConnectionHandles visible={selected || data.connecting} />
-    <span>{node.data.name || node.data.color}</span>
-  </div>;
+export function SwatchNode({ data, selected, id, type }: NodeProps<FlowMoodboardNode>) {
+  const node: NodeShell = { id, type, data };
+  const moodboardNode = data.moodboardNode;
+  if (moodboardNode.type !== "swatch") return null;
+  return <NodeFrame node={node} selected={selected}><div className="moodboardCanvasSwatchMedia" style={{ background: moodboardNode.data.color }}><span>{moodboardNode.data.name || moodboardNode.data.color}</span></div></NodeFrame>;
 }

@@ -1,12 +1,13 @@
 import { applyEdgeChanges, applyNodeChanges, type Edge, type Node } from "@xyflow/react";
-import type { Asset, MoodboardDocument, MoodboardEdge, MoodboardNode } from "../../types";
+import type { Asset, MoodboardDocument, MoodboardEdge, MoodboardHandlePosition, MoodboardNode } from "../../types";
 
 export type FlowNodeData = {
   moodboardNode: MoodboardNode;
   asset?: Asset;
-  connecting: boolean;
+  mode: "select" | "connect";
   onTextCommit: (id: string, text: string) => void;
   onResizeEnd: (id: string) => void;
+  onPortClick: (nodeId: string, port: MoodboardHandlePosition) => void;
 };
 
 export type FlowMoodboardNode = Node<FlowNodeData, "asset" | "text" | "swatch">;
@@ -23,7 +24,7 @@ export function createMoodboardId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-export function toFlowNodes(document: MoodboardDocument, assets: Asset[], connecting: boolean, onTextCommit: FlowNodeData["onTextCommit"], onResizeEnd: FlowNodeData["onResizeEnd"]): FlowMoodboardNode[] {
+export function toFlowNodes(document: MoodboardDocument, assets: Asset[], mode: FlowNodeData["mode"], onTextCommit: FlowNodeData["onTextCommit"], onResizeEnd: FlowNodeData["onResizeEnd"], onPortClick: FlowNodeData["onPortClick"]): FlowMoodboardNode[] {
   const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
   return document.nodes.map((node) => ({
     id: node.id,
@@ -35,11 +36,41 @@ export function toFlowNodes(document: MoodboardDocument, assets: Asset[], connec
     data: {
       moodboardNode: node,
       asset: node.type === "asset" && node.data.assetId ? assetsById.get(node.data.assetId) : undefined,
-      connecting,
+      mode,
       onTextCommit,
       onResizeEnd,
+      onPortClick,
     },
   }));
+}
+
+export const MOODBOARD_PORTS: MoodboardHandlePosition[] = ["top", "right", "bottom", "left"];
+
+function parseHandle(handle?: string | null): MoodboardHandlePosition | undefined {
+  return MOODBOARD_PORTS.includes(handle as MoodboardHandlePosition) ? handle as MoodboardHandlePosition : undefined;
+}
+
+export function nearestMoodboardPort(source: Pick<MoodboardNode, "position" | "size">, target: Pick<MoodboardNode, "position" | "size">): MoodboardHandlePosition {
+  const sourceX = source.position.x + source.size.width / 2;
+  const sourceY = source.position.y + source.size.height / 2;
+  const targetX = target.position.x + target.size.width / 2;
+  const targetY = target.position.y + target.size.height / 2;
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "right" : "left";
+  return dy >= 0 ? "bottom" : "top";
+}
+
+function oppositePort(port: MoodboardHandlePosition): MoodboardHandlePosition {
+  return port === "top" ? "bottom" : port === "bottom" ? "top" : port === "left" ? "right" : "left";
+}
+
+export function edgePortConfig(edge: MoodboardEdge, nodes: MoodboardNode[]): Required<NonNullable<MoodboardEdge["config"]>> {
+  const source = nodes.find((node) => node.id === edge.sourceNodeId);
+  const target = nodes.find((node) => node.id === edge.targetNodeId);
+  const sourceHandle = edge.config?.sourceHandle ?? (source && target ? nearestMoodboardPort(source, target) : "right");
+  const targetHandle = edge.config?.targetHandle ?? oppositePort(sourceHandle);
+  return { sourceHandle, targetHandle };
 }
 
 export function isValidMoodboardConnection(connection: { source?: string | null; target?: string | null }, edges: MoodboardEdge[]): boolean {
@@ -72,6 +103,8 @@ export function toFlowEdges(document: MoodboardDocument): FlowMoodboardEdge[] {
     source: edge.sourceNodeId,
     target: edge.targetNodeId,
     type: "moodboard",
+    sourceHandle: edgePortConfig(edge, document.nodes).sourceHandle,
+    targetHandle: edgePortConfig(edge, document.nodes).targetHandle,
     data: { moodboardEdge: edge },
     style: { stroke: EDGE_COLORS[edge.color], strokeWidth: 1.25 },
   }));
@@ -96,7 +129,15 @@ export function flowNodesToDocument(nodes: FlowMoodboardNode[], document: Moodbo
 
 export function flowEdgesToDocument(edges: FlowMoodboardEdge[], document: MoodboardDocument): MoodboardDocument {
   const current = new Map(document.edges.map((edge) => [edge.id, edge]));
-  return { ...document, edges: edges.flatMap((edge): MoodboardEdge[] => current.has(edge.id) ? [current.get(edge.id)!] : []) };
+  return {
+    ...document,
+    edges: edges.flatMap((edge): MoodboardEdge[] => {
+      const original = current.get(edge.id);
+      if (!original) return [];
+      const fallback = edgePortConfig(original, document.nodes);
+      return [{ ...original, config: { sourceHandle: parseHandle(edge.sourceHandle) ?? fallback.sourceHandle, targetHandle: parseHandle(edge.targetHandle) ?? fallback.targetHandle } }];
+    }),
+  };
 }
 
 export function applyFlowNodeChanges(changes: Parameters<typeof applyNodeChanges<FlowMoodboardNode>>[0], document: MoodboardDocument, nodes: FlowMoodboardNode[]): MoodboardDocument {
