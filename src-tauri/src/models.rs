@@ -257,15 +257,3 @@ pub struct MoodboardContext {
     pub id: String,
     pub name: String,
 }
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MoodboardAssetGroup {
-    pub id: String,
-    pub moodboard_id: String,
-    pub name: String,
-    pub position: i64,
-    pub assets: Vec<Asset>,
-    pub created_at: String,
-    pub updated_at: String,
-}

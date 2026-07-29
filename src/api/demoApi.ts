@@ -1,4 +1,4 @@
-import type { Asset, CreateMoodboardInput, HomeSnapshot, MoodboardAssetGroup, MoodboardDocument, MoodboardListFilter, MoodboardNode, MoodboardSummary, SaveMoodboardResult, Setting, VideoPreviewCacheStatus } from "../types";
+import type { Asset, CreateMoodboardInput, HomeSnapshot, MoodboardDocument, MoodboardListFilter, MoodboardNode, MoodboardSummary, SaveMoodboardResult, Setting, VideoPreviewCacheStatus } from "../types";
 import type { TagloomApi } from "./tauriApi";
 import {
   demoAssets,
@@ -15,7 +15,6 @@ const demoSettings = new Map<string, string>();
 const DEFAULT_VIDEO_CACHE_LIMIT = 5 * 1024 ** 3;
 let demoVideoCacheStatus: VideoPreviewCacheStatus = { usedBytes: 0, limitBytes: DEFAULT_VIDEO_CACHE_LIMIT, itemCount: 0, pendingCleanupBytes: 0 };
 const demoMoodboards = new Map<string, MoodboardDocument & { updatedAt: string }>();
-const demoMoodboardAssetGroups = new Map<string, MoodboardAssetGroup>();
 let demoMoodboardCounter = 0;
 
 function clone<T>(value: T): T {
@@ -57,12 +56,6 @@ function moodboardSummary(document: MoodboardDocument & { updatedAt: string }): 
   return { id: document.id, collectionId: collectionIds[0], collectionIds, contexts, name: document.name, nodeCount: document.nodes.length, previewAssets: clone(previewAssets), updatedAt: document.updatedAt };
 }
 
-function groupsForBoard(moodboardId: string): MoodboardAssetGroup[] {
-  return [...demoMoodboardAssetGroups.values()]
-    .filter((group) => group.moodboardId === moodboardId)
-    .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
-}
-
 function clearMoodboardAssets(ids: string[]): void {
   const deleted = new Set(ids);
   for (const [id, document] of demoMoodboards) {
@@ -74,10 +67,6 @@ function clearMoodboardAssets(ids: string[]): void {
       return { ...node, data: { ...node.data, assetId: undefined, assetSnapshot: node.data.assetSnapshot ?? (asset ? { filename: asset.filename, mediaKind: asset.mediaKind, thumbnailPath: asset.thumbnailPath } : undefined) } };
     });
     if (changed) demoMoodboards.set(id, { ...document, nodes, revision: document.revision + 1, updatedAt: new Date().toISOString() });
-  }
-  for (const [groupId, group] of demoMoodboardAssetGroups) {
-    const assets = group.assets.filter((asset) => !deleted.has(asset.id));
-    if (assets.length !== group.assets.length) demoMoodboardAssetGroups.set(groupId, { ...group, assets, updatedAt: new Date().toISOString() });
   }
 }
 
@@ -195,8 +184,6 @@ export const demoApi = {
       viewport: { x: 0, y: 0, zoom: 1 }, backgroundColor: "#f1f2ef", nodes: [], edges: [], revision: 0, updatedAt: now,
     };
     demoMoodboards.set(id, document);
-    const groupId = `moodboard-group-${Date.now()}-${demoMoodboardCounter}`;
-    demoMoodboardAssetGroups.set(groupId, { id: groupId, moodboardId: id, name: "素材", position: 0, assets: [], createdAt: now, updatedAt: now });
     return clone(document);
   },
   getMoodboard: async (id) => {
@@ -224,39 +211,13 @@ export const demoApi = {
     if (!document) throw new Error("Moodboard not found");
     demoMoodboards.set(id, { ...document, name: requireMoodboardName(name), revision: document.revision + 1, updatedAt: new Date().toISOString() });
   },
-  deleteMoodboard: async (id) => { demoMoodboards.delete(id); for (const group of groupsForBoard(id)) demoMoodboardAssetGroups.delete(group.id); },
+  deleteMoodboard: async (id) => { demoMoodboards.delete(id); },
   setMoodboardContexts: async (id, collectionIds: string[]) => {
     const document = demoMoodboards.get(id);
     if (!document) throw new Error("Moodboard not found");
     const uniqueIds = [...new Set(collectionIds)];
     if (uniqueIds.some((collectionId) => !demoBootstrap.collections.some((collection) => collection.id === collectionId))) throw new Error("Context not found");
     demoMoodboards.set(id, { ...document, collectionIds: uniqueIds, collectionId: uniqueIds[0], updatedAt: new Date().toISOString() });
-  },
-  listMoodboardAssetGroups: async (moodboardId) => clone(groupsForBoard(moodboardId)),
-  createMoodboardAssetGroup: async (moodboardId, name) => {
-    if (!demoMoodboards.has(moodboardId)) throw new Error("Moodboard not found");
-    const normalized = name.trim();
-    if (!normalized || Array.from(normalized).length > 80) throw new Error("Group names must contain 1 to 80 characters");
-    if (groupsForBoard(moodboardId).some((group) => group.name.localeCompare(normalized, undefined, { sensitivity: "accent" }) === 0)) throw new Error("A group with this name already exists");
-    const now = new Date().toISOString();
-    const group: MoodboardAssetGroup = { id: `moodboard-group-${Date.now()}-${crypto.randomUUID()}`, moodboardId, name: normalized, position: groupsForBoard(moodboardId).length, assets: [], createdAt: now, updatedAt: now };
-    demoMoodboardAssetGroups.set(group.id, group);
-    return clone(group);
-  },
-  renameMoodboardAssetGroup: async (id, name) => {
-    const group = demoMoodboardAssetGroups.get(id);
-    if (!group) throw new Error("Moodboard group not found");
-    const normalized = name.trim();
-    if (!normalized || Array.from(normalized).length > 80) throw new Error("Group names must contain 1 to 80 characters");
-    demoMoodboardAssetGroups.set(id, { ...group, name: normalized, updatedAt: new Date().toISOString() });
-  },
-  deleteMoodboardAssetGroup: async (id) => { demoMoodboardAssetGroups.delete(id); },
-  setMoodboardAssetGroupAssets: async (id, assetIds: string[]) => {
-    const group = demoMoodboardAssetGroups.get(id);
-    if (!group) throw new Error("Moodboard group not found");
-    const uniqueIds = [...new Set(assetIds)];
-    if (uniqueIds.some((assetId) => !demoAssets.some((asset) => asset.id === assetId))) throw new Error("Asset not found");
-    demoMoodboardAssetGroups.set(id, { ...group, assets: uniqueIds.flatMap((assetId) => demoAssets.find((asset) => asset.id === assetId) ? [demoAssets.find((asset) => asset.id === assetId)!] : []), updatedAt: new Date().toISOString() });
   },
   pickMoodboardExportPath: async (name) => `demo-download://${name || "moodboard"}.png`,
   writeMoodboardExport: async (path, bytes) => {

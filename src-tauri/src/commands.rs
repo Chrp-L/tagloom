@@ -3,9 +3,9 @@ use crate::{
     media,
     models::{
         Asset, AssetPage, AssetQuery, AssetRow, Collection, CollectionHomeCard, HomeSnapshot,
-        JobProgress, JobRow, LibraryBootstrap, MoodboardAssetGroup, MoodboardContext,
-        MoodboardDocument, MoodboardEdge, MoodboardNode, MoodboardSummary, SaveMoodboardResult,
-        Setting, SourceRoot, Tag, VideoPreviewCacheStatus,
+        JobProgress, JobRow, LibraryBootstrap, MoodboardContext, MoodboardDocument, MoodboardEdge,
+        MoodboardNode, MoodboardSummary, SaveMoodboardResult, Setting, SourceRoot, Tag,
+        VideoPreviewCacheStatus,
     },
     scanner,
     state::AppState,
@@ -33,16 +33,6 @@ struct MoodboardRow {
     viewport_zoom: f64,
     background_color: String,
     revision: i64,
-}
-
-#[derive(FromRow)]
-struct MoodboardAssetGroupRow {
-    id: String,
-    moodboard_id: String,
-    name: String,
-    position: i64,
-    created_at: String,
-    updated_at: String,
 }
 
 #[derive(FromRow)]
@@ -1296,15 +1286,6 @@ pub async fn create_moodboard(
             .execute(&mut *transaction)
             .await?;
     }
-    sqlx::query(
-        "INSERT INTO moodboard_asset_groups(id, moodboard_id, name, position, created_at, updated_at) VALUES(?, ?, '素材', 0, ?, ?)",
-    )
-    .bind(Uuid::new_v4().to_string())
-    .bind(&id)
-    .bind(&now)
-    .bind(&now)
-    .execute(&mut *transaction)
-    .await?;
     transaction.commit().await?;
     load_moodboard_document(&db, &id).await
 }
@@ -1368,200 +1349,6 @@ pub async fn set_moodboard_contexts(
         .await?;
     transaction.commit().await?;
     moodboard_contexts(&db, &id).await
-}
-
-async fn validate_moodboard_asset_ids(db: &SqlitePool, asset_ids: &[String]) -> AppResult<()> {
-    if asset_ids.len() > 500 || asset_ids.iter().any(|id| id.trim().is_empty()) {
-        return Err("Moodboard group assets are invalid".into());
-    }
-    let unique = asset_ids.iter().collect::<std::collections::HashSet<_>>();
-    if unique.len() != asset_ids.len() {
-        return Err("Moodboard group assets must be unique".into());
-    }
-    for asset_id in asset_ids {
-        let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM assets WHERE id=?")
-            .bind(asset_id)
-            .fetch_one(db)
-            .await?;
-        if exists == 0 {
-            return Err("Moodboard group asset was not found".into());
-        }
-    }
-    Ok(())
-}
-
-async fn load_moodboard_asset_group(db: &SqlitePool, id: &str) -> AppResult<MoodboardAssetGroup> {
-    let row = sqlx::query_as::<_, MoodboardAssetGroupRow>(
-        "SELECT id, moodboard_id, name, position, created_at, updated_at FROM moodboard_asset_groups WHERE id=?",
-    )
-    .bind(id)
-    .fetch_optional(db)
-    .await?
-    .ok_or_else(|| AppError::Message("Moodboard asset group was not found".into()))?;
-    let assets = sqlx::query_as::<_, AssetRow>(&format!(
-        "{ASSET_ROW_SELECT} JOIN moodboard_asset_group_items gi ON gi.asset_id=a.id
-         WHERE gi.group_id=? ORDER BY gi.position ASC, gi.id ASC"
-    ))
-    .bind(id)
-    .fetch_all(db)
-    .await?;
-    Ok(MoodboardAssetGroup {
-        id: row.id,
-        moodboard_id: row.moodboard_id,
-        name: row.name,
-        position: row.position,
-        assets: hydrate_assets(db, assets).await?,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    })
-}
-
-#[tauri::command]
-pub async fn list_moodboard_asset_groups(
-    moodboard_id: String,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<MoodboardAssetGroup>> {
-    let db = state.db().await;
-    let ids = sqlx::query_scalar::<_, String>(
-        "SELECT id FROM moodboard_asset_groups WHERE moodboard_id=? ORDER BY position ASC, id ASC",
-    )
-    .bind(&moodboard_id)
-    .fetch_all(&db)
-    .await?;
-    let mut groups = Vec::with_capacity(ids.len());
-    for id in ids {
-        groups.push(load_moodboard_asset_group(&db, &id).await?);
-    }
-    Ok(groups)
-}
-
-#[tauri::command]
-pub async fn create_moodboard_asset_group(
-    moodboard_id: String,
-    name: String,
-    asset_ids: Option<Vec<String>>,
-    state: State<'_, AppState>,
-) -> AppResult<MoodboardAssetGroup> {
-    let name = validate_moodboard_name(&name)?.to_owned();
-    let asset_ids = asset_ids.unwrap_or_default();
-    let db = state.db().await;
-    validate_moodboard_asset_ids(&db, &asset_ids).await?;
-    let mut transaction = db.begin().await?;
-    let board_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM moodboards WHERE id=?")
-        .bind(&moodboard_id)
-        .fetch_one(&mut *transaction)
-        .await?;
-    if board_exists == 0 {
-        return Err("Moodboard was not found".into());
-    }
-    let id = Uuid::new_v4().to_string();
-    let now = Utc::now().to_rfc3339();
-    let position = sqlx::query_scalar::<_, i64>(
-        "SELECT COALESCE(MAX(position), -1) + 1 FROM moodboard_asset_groups WHERE moodboard_id=?",
-    )
-    .bind(&moodboard_id)
-    .fetch_one(&mut *transaction)
-    .await?;
-    sqlx::query(
-        "INSERT INTO moodboard_asset_groups(id, moodboard_id, name, position, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&moodboard_id)
-    .bind(name)
-    .bind(position)
-    .bind(&now)
-    .bind(&now)
-    .execute(&mut *transaction)
-    .await?;
-    for (position, asset_id) in asset_ids.iter().enumerate() {
-        sqlx::query(
-            "INSERT INTO moodboard_asset_group_items(id, group_id, asset_id, position, created_at) VALUES(?, ?, ?, ?, ?)",
-        )
-        .bind(Uuid::new_v4().to_string())
-        .bind(&id)
-        .bind(asset_id)
-        .bind(position as i64)
-        .bind(&now)
-        .execute(&mut *transaction)
-        .await?;
-    }
-    transaction.commit().await?;
-    load_moodboard_asset_group(&db, &id).await
-}
-
-#[tauri::command]
-pub async fn rename_moodboard_asset_group(
-    id: String,
-    name: String,
-    state: State<'_, AppState>,
-) -> AppResult<MoodboardAssetGroup> {
-    let name = validate_moodboard_name(&name)?;
-    let db = state.db().await;
-    let result = sqlx::query("UPDATE moodboard_asset_groups SET name=?, updated_at=? WHERE id=?")
-        .bind(name)
-        .bind(Utc::now().to_rfc3339())
-        .bind(&id)
-        .execute(&db)
-        .await?;
-    if result.rows_affected() != 1 {
-        return Err("Moodboard asset group was not found".into());
-    }
-    load_moodboard_asset_group(&db, &id).await
-}
-
-#[tauri::command]
-pub async fn delete_moodboard_asset_group(id: String, state: State<'_, AppState>) -> AppResult<()> {
-    let result = sqlx::query("DELETE FROM moodboard_asset_groups WHERE id=?")
-        .bind(id)
-        .execute(&state.db().await)
-        .await?;
-    if result.rows_affected() != 1 {
-        return Err("Moodboard asset group was not found".into());
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn set_moodboard_asset_group_items(
-    id: String,
-    asset_ids: Vec<String>,
-    state: State<'_, AppState>,
-) -> AppResult<MoodboardAssetGroup> {
-    let db = state.db().await;
-    validate_moodboard_asset_ids(&db, &asset_ids).await?;
-    let mut transaction = db.begin().await?;
-    let group_exists =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM moodboard_asset_groups WHERE id=?")
-            .bind(&id)
-            .fetch_one(&mut *transaction)
-            .await?;
-    if group_exists == 0 {
-        return Err("Moodboard asset group was not found".into());
-    }
-    let now = Utc::now().to_rfc3339();
-    sqlx::query("DELETE FROM moodboard_asset_group_items WHERE group_id=?")
-        .bind(&id)
-        .execute(&mut *transaction)
-        .await?;
-    for (position, asset_id) in asset_ids.iter().enumerate() {
-        sqlx::query(
-            "INSERT INTO moodboard_asset_group_items(id, group_id, asset_id, position, created_at) VALUES(?, ?, ?, ?, ?)",
-        )
-        .bind(Uuid::new_v4().to_string())
-        .bind(&id)
-        .bind(asset_id)
-        .bind(position as i64)
-        .bind(&now)
-        .execute(&mut *transaction)
-        .await?;
-    }
-    sqlx::query("UPDATE moodboard_asset_groups SET updated_at=? WHERE id=?")
-        .bind(&now)
-        .bind(&id)
-        .execute(&mut *transaction)
-        .await?;
-    transaction.commit().await?;
-    load_moodboard_asset_group(&db, &id).await
 }
 
 #[tauri::command]
@@ -1817,6 +1604,19 @@ mod tests {
         document.edges.clear();
         document.nodes[0].position.x = f64::INFINITY;
         assert!(validate_moodboard_document(&document).is_err());
+
+        let mut handles = valid_moodboard_document();
+        let mut target = handles.nodes[0].clone();
+        target.id = "target".into();
+        handles.nodes.push(target);
+        handles.edges.push(MoodboardEdge {
+            id: "handled-edge".into(),
+            source_node_id: "asset-node".into(),
+            target_node_id: "target".into(),
+            color: "neutral".into(),
+            config: json!({ "sourceHandle": "right", "targetHandle": "left" }),
+        });
+        assert!(validate_moodboard_document(&handles).is_ok());
     }
 
     #[tokio::test]
@@ -1842,17 +1642,19 @@ mod tests {
             .execute(&db)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO assets(id) VALUES('asset')")
+        sqlx::query("INSERT INTO assets(id) VALUES('asset'), ('group-asset')")
             .execute(&db)
             .await
             .unwrap();
         sqlx::query("INSERT INTO moodboards(id, collection_id, name, created_at, updated_at) VALUES('one', 'collection', 'One', 'now', 'now'), ('two', 'collection', 'Two', 'now', 'now')")
             .execute(&db).await.unwrap();
-        sqlx::query("INSERT INTO moodboard_nodes(moodboard_id, id, node_type, asset_id, position_x, position_y, width, height, config_json) VALUES('one', 'node-one', 'asset', 'asset', 0, 0, 10, 10, '{}'), ('two', 'node-two', 'asset', NULL, 0, 0, 10, 10, '{}')")
+        sqlx::query("INSERT INTO moodboard_nodes(moodboard_id, id, node_type, asset_id, position_x, position_y, width, height, config_json) VALUES('one', 'node-one', 'asset', 'asset', 0, 0, 10, 10, '{}'), ('one', 'node-three', 'text', NULL, 10, 0, 10, 10, '{}'), ('two', 'node-two', 'asset', NULL, 0, 0, 10, 10, '{}')")
             .execute(&db).await.unwrap();
         let cross_board = sqlx::query("INSERT INTO moodboard_edges(moodboard_id, id, source_node_id, target_node_id, color, config_json) VALUES('one', 'bad', 'node-one', 'node-two', 'neutral', '{}')")
             .execute(&db).await;
         assert!(cross_board.is_err());
+        sqlx::query("INSERT INTO moodboard_edges(moodboard_id, id, source_node_id, target_node_id, color, config_json) VALUES('one', 'good', 'node-one', 'node-three', 'neutral', '{\"sourceHandle\":\"right\",\"targetHandle\":\"left\"}')")
+            .execute(&db).await.unwrap();
         sqlx::query("DELETE FROM assets WHERE id='asset'")
             .execute(&db)
             .await
@@ -1878,6 +1680,31 @@ mod tests {
         assert_eq!(context_id, "collection");
         sqlx::query("INSERT INTO moodboard_asset_groups(id, moodboard_id, name, created_at, updated_at) VALUES('group', 'one', 'References', 'now', 'now')")
             .execute(&db).await.unwrap();
+        sqlx::query("INSERT INTO moodboard_asset_group_items(id, group_id, asset_id, created_at) VALUES('group-item', 'group', 'group-asset', 'now')")
+            .execute(&db).await.unwrap();
+        sqlx::raw_sql(include_str!(
+            "../migrations/0009_remove_moodboard_asset_groups.sql"
+        ))
+        .execute(&db)
+        .await
+        .unwrap();
+        let removed_tables: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('moodboard_asset_groups', 'moodboard_asset_group_items')")
+            .fetch_one(&db).await.unwrap();
+        let surviving_contexts: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM moodboard_contexts WHERE moodboard_id='one'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        let surviving_edges: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM moodboard_edges WHERE moodboard_id='one' AND id='good'",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            (removed_tables, surviving_contexts, surviving_edges),
+            (0, 1, 1)
+        );
         sqlx::query("DELETE FROM collections WHERE id='collection'")
             .execute(&db)
             .await
