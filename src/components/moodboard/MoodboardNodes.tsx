@@ -10,8 +10,7 @@ const POSITION: Record<MoodboardHandlePosition, Position> = { top: Position.Top,
 type NodeShell = Pick<FlowMoodboardNode, "id" | "type" | "data">;
 
 function LoosePorts({ node, visible }: { node: NodeShell; visible: boolean }) {
-  if (!visible) return null;
-  return <>{MOODBOARD_PORTS.map((port) => <span key={port} className={`moodboardCanvasPort moodboardCanvasPort-${port}`}>
+  return <>{MOODBOARD_PORTS.map((port) => <span key={port} className={`moodboardCanvasPort moodboardCanvasPort-${port}${visible ? " active" : ""}`}>
     <Handle id={port} type="source" position={POSITION[port]} className="moodboardCanvasPortSource" onClick={(event) => { event.stopPropagation(); node.data.onPortClick(node.id, port); }} />
   </span>)}</>;
 }

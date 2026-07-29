@@ -13,6 +13,10 @@ export type FlowNodeData = {
 export type FlowMoodboardNode = Node<FlowNodeData, "asset" | "text" | "swatch">;
 export type FlowMoodboardEdge = Edge<{ moodboardEdge: MoodboardEdge }, "moodboard">;
 
+export const MOODBOARD_GRID = 8;
+export const MOODBOARD_ASSET_WIDTH = 240;
+export const MOODBOARD_LAYOUT_GAP = 24;
+
 const EDGE_COLORS: Record<MoodboardEdge["color"], string> = {
   neutral: "var(--line-strong)",
   coral: "var(--accent)",
@@ -22,6 +26,15 @@ const EDGE_COLORS: Record<MoodboardEdge["color"], string> = {
 
 export function createMoodboardId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+export function snapMoodboardValue(value: number): number {
+  return Math.round(value / MOODBOARD_GRID) * MOODBOARD_GRID;
+}
+
+export function moodboardAssetHeight(asset: Pick<Asset, "width" | "height">): number {
+  const ratio = asset.width && asset.height ? asset.width / asset.height : 4 / 3;
+  return snapMoodboardValue(Math.max(144, Math.min(360, MOODBOARD_ASSET_WIDTH / ratio)));
 }
 
 export function toFlowNodes(document: MoodboardDocument, assets: Asset[], mode: FlowNodeData["mode"], onTextCommit: FlowNodeData["onTextCommit"], onResizeEnd: FlowNodeData["onResizeEnd"], onPortClick: FlowNodeData["onPortClick"]): FlowMoodboardNode[] {
@@ -119,8 +132,8 @@ export function flowNodesToDocument(nodes: FlowMoodboardNode[], document: Moodbo
       if (!original) return [];
       return [{
         ...original,
-        position: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
-        size: { width: Math.round(node.measured?.width ?? node.width ?? original.size.width), height: Math.round(node.measured?.height ?? node.height ?? original.size.height) },
+        position: { x: snapMoodboardValue(node.position.x), y: snapMoodboardValue(node.position.y) },
+        size: { width: snapMoodboardValue(node.measured?.width ?? node.width ?? original.size.width), height: snapMoodboardValue(node.measured?.height ?? node.height ?? original.size.height) },
         zIndex: node.zIndex ?? original.zIndex,
       }];
     }),
@@ -150,21 +163,18 @@ export function applyFlowEdgeChanges(changes: Parameters<typeof applyEdgeChanges
 
 export function autoLayoutAssets(assets: Asset[]): MoodboardNode[] {
   const columns = [0, 0, 0];
-  const width = 240;
-  const gap = 28;
   return assets.slice(0, 12).map((asset) => {
     const index = columns.indexOf(Math.min(...columns));
-    const ratio = asset.width && asset.height ? asset.width / asset.height : 4 / 3;
-    const height = Math.round(Math.max(140, Math.min(360, width / ratio)));
+    const height = moodboardAssetHeight(asset);
     const node: MoodboardNode = {
       id: createMoodboardId("asset"),
       type: "asset",
-      position: { x: index * (width + gap), y: columns[index] },
-      size: { width, height },
+      position: { x: index * (MOODBOARD_ASSET_WIDTH + MOODBOARD_LAYOUT_GAP), y: columns[index] },
+      size: { width: MOODBOARD_ASSET_WIDTH, height },
       zIndex: 1,
       data: { assetId: asset.id, assetSnapshot: { filename: asset.filename, mediaKind: asset.mediaKind, thumbnailPath: asset.thumbnailPath }, fit: "cover" },
     };
-    columns[index] += height + gap;
+    columns[index] += height + MOODBOARD_LAYOUT_GAP;
     return node;
   });
 }
