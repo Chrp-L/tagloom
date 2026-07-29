@@ -67,7 +67,6 @@ export default function App() {
   const [libraryDeletePending, setLibraryDeletePending] = useState(false);
   const [renameAsset, setRenameAsset] = useState<Asset>();
   const [job, setJob] = useState<JobProgress>();
-  const [collectionMode, setCollectionMode] = useState<"assets" | "moodboards">("assets");
   const moodboardFlushRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const { cue: weaveCue, trigger: cueWeave } = useTransientCue();
   const { messages: toasts, notify } = useAppNotifications();
@@ -159,9 +158,9 @@ export default function App() {
     useUiStore.getState().resetAssetContext();
     setSort(value as AssetQuery["sort"]);
   }, [cueWeave]);
-  const moodboardMode = ui.navigation.kind === "collection" && collectionMode === "moodboards";
+  const moodboardMode = ui.navigation.kind === "moodboards";
   const navigate = useCallback((value: Parameters<typeof ui.setNavigation>[0]) => {
-    const complete = () => { setCollectionMode("assets"); ui.setNavigation(value); };
+    const complete = () => ui.setNavigation(value);
     if (!moodboardMode || !moodboardFlushRef.current) { complete(); return; }
     void moodboardFlushRef.current().then(complete).catch((error) => notify(error instanceof Error ? error.message : String(error), "error"));
   }, [moodboardMode, notify, ui]);
@@ -178,11 +177,10 @@ export default function App() {
           onDeleteTag={(tag) => setLibraryDeleteTarget({ kind: "tag", id: tag.id, name: tag.name })}
           />
         <main className="workspace">
-          {moodboardMode && activeCollection ? <MoodboardWorkspace collectionId={activeCollection.id} collectionName={activeCollection.name} onModeChange={setCollectionMode} onPreview={(asset) => preview(asset, assets)} onNotify={notify} onFlushReady={(flush) => { moodboardFlushRef.current = flush; }} /> : <>
+          {moodboardMode ? <MoodboardWorkspace collections={bootstrap.data?.collections ?? []} onPreview={(asset) => preview(asset, assets)} onNotify={notify} onFlushReady={(flush) => { moodboardFlushRef.current = flush; }} /> : <>
           <Toolbar mode={ui.navigation.kind === "home" ? "home" : "assets"} title={title} count={total} search={search} sort={sort || "newest"} view={ui.view} gridColumns={ui.gridColumns} selectionMode={ui.selectionMode} checkedCount={ui.checkedIds.length} eventCue={weaveCue}
             onSearch={changeSearch} onSort={changeSort} onView={(value) => { cueWeave("layout"); ui.setView(value); }} onGridColumns={(value) => { cueWeave("layout"); ui.setGridColumns(value); }} onEnterBatch={ui.enterBatchSelection} onExitBatch={ui.exitBatchSelection} onSettings={() => setSettingsOpen(true)} />
           <ScanStatusBar job={job} onControl={(command) => { if (job) void api.controlJob(job.id, command); }} />
-          {ui.navigation.kind === "collection" && <div className="collectionModeBar"><div className="segmented" aria-label={t("collections")}><button className="tactile" aria-pressed={collectionMode === "assets"} onClick={() => setCollectionMode("assets")}>{t("assetsMode")}</button><button className="tactile" aria-pressed={collectionMode === "moodboards"} onClick={() => setCollectionMode("moodboards")}>{t("moodboardsMode")}</button></div></div>}
           {ui.navigation.kind === "home" ? <HomePage snapshot={homeQuery.data} loading={homeQuery.isLoading} error={homeQuery.error instanceof Error ? homeQuery.error.message : homeQuery.error ? String(homeQuery.error) : undefined} focusedAssetId={ui.focusedAssetId} job={job}
             hasSources={(bootstrap.data?.sources.length ?? 0) > 0} onAddSource={libraryActions.addFolder}
             onOpenCollection={(id) => ui.setNavigation({ kind: "collection", id })} onViewCollections={() => ui.revealSidebarSection("collections")} onCreateCollection={() => setCreateKind("collection")}

@@ -36,15 +36,17 @@ export const defaultMoodboardLabels: MoodboardLabels = {
   emptyDescription: "Collect references, colour, and notes for this context.",
 };
 
-interface MoodboardListProps {
+export type MoodboardListItem = MoodboardSummary & { contexts?: Array<{ id: string; name: string }> };
+
+export interface MoodboardListProps {
   collectionName: string;
-  boards: MoodboardSummary[];
+  boards: MoodboardListItem[];
   loading: boolean;
   error?: string | null;
   onOpen: (id: string) => void;
   onCreate: () => void;
-  onRename: (board: MoodboardSummary) => void;
-  onDelete: (board: MoodboardSummary) => void;
+  onRename: (board: MoodboardListItem) => void;
+  onDelete: (board: MoodboardListItem) => void;
   labels?: Partial<MoodboardLabels>;
 }
 
@@ -75,7 +77,7 @@ function IconAction({ label, children, onClick, danger = false }: { label: strin
   </Tooltip.Trigger><Tooltip.Portal><Tooltip.Content className="tooltipContent" side="top" sideOffset={7}>{label}<Tooltip.Arrow className="tooltipArrow" /></Tooltip.Content></Tooltip.Portal></Tooltip.Root>;
 }
 
-function BoardRow({ board, labels, onOpen, onRename, onDelete }: { board: MoodboardSummary; labels: MoodboardLabels; onOpen: () => void; onRename: () => void; onDelete: () => void }) {
+function BoardRow({ board, labels, onOpen, onRename, onDelete }: { board: MoodboardListItem; labels: MoodboardLabels; onOpen: () => void; onRename: () => void; onDelete: () => void }) {
   const updatedAt = formatDate(board.updatedAt);
   return <article className="moodboardRow">
     <button type="button" className="moodboardRowOpen tactile" onClick={onOpen} aria-label={`${labels.open}: ${board.name}`}>
@@ -83,6 +85,7 @@ function BoardRow({ board, labels, onOpen, onRename, onDelete }: { board: Moodbo
       <span className="moodboardRowCopy">
         <strong>{board.name}</strong>
         <small>{labels.nodesCount(board.nodeCount)} <i aria-hidden="true" /> {labels.updated(updatedAt)}</small>
+        {board.contexts?.length ? <em className="moodboardRowContexts">{board.contexts.map((context) => context.name).join(" · ")}</em> : null}
       </span>
     </button>
     <div className="moodboardRowActions" aria-label={`${board.name} actions`}>

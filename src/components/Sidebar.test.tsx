@@ -106,7 +106,7 @@ describe("sidebar information hierarchy", () => {
   it("orders collapsed navigation controls by the same semantic hierarchy", () => {
     renderSidebar({ kind: "home" }, true);
     const labels = Array.from(document.querySelectorAll<HTMLButtonElement>(".railNav .railButton"), (button) => button.getAttribute("aria-label"));
-    expect(labels).toEqual(["home", "allItems", "images", "videos", "collections", "tags", "folders"].map((key) => i18n.t(key)));
+    expect(labels).toEqual(["home", "moodboards", "allItems", "images", "videos", "collections", "tags", "folders"].map((key) => i18n.t(key)));
   });
 
   it("does not render decorative section cable marks", () => {

@@ -176,16 +176,27 @@ export interface MoodboardEdge {
 
 export interface MoodboardSummary {
   id: string;
-  collectionId: string;
+  /** The first linked context, retained for backwards-compatible clients. */
+  collectionId?: string;
+  collectionIds?: string[];
+  contexts?: MoodboardContextRef[];
   name: string;
   nodeCount: number;
   previewAssets: Asset[];
   updatedAt: string;
 }
 
+export interface MoodboardContextRef {
+  id: string;
+  name: string;
+}
+
 export interface MoodboardDocument {
   id: string;
-  collectionId: string;
+  /** The first linked context, retained for backwards-compatible documents. */
+  collectionId?: string;
+  collectionIds?: string[];
+  contexts?: MoodboardContextRef[];
   name: string;
   viewport: MoodboardViewport;
   backgroundColor: string;
@@ -197,4 +208,23 @@ export interface MoodboardDocument {
 export interface SaveMoodboardResult {
   revision: number;
   updatedAt: string;
+}
+
+export interface MoodboardAssetGroup {
+  id: string;
+  moodboardId: string;
+  name: string;
+  position: number;
+  assets: Asset[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MoodboardListFilter {
+  collectionId?: string;
+}
+
+export interface CreateMoodboardInput {
+  name?: string;
+  collectionIds?: string[];
 }

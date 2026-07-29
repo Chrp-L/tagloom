@@ -1,4 +1,4 @@
-import type { Asset, HomeSnapshot, MoodboardDocument, MoodboardNode, MoodboardSummary, SaveMoodboardResult, Setting, VideoPreviewCacheStatus } from "../types";
+import type { Asset, CreateMoodboardInput, HomeSnapshot, MoodboardAssetGroup, MoodboardDocument, MoodboardListFilter, MoodboardNode, MoodboardSummary, SaveMoodboardResult, Setting, VideoPreviewCacheStatus } from "../types";
 import type { TagloomApi } from "./tauriApi";
 import {
   demoAssets,
@@ -15,6 +15,7 @@ const demoSettings = new Map<string, string>();
 const DEFAULT_VIDEO_CACHE_LIMIT = 5 * 1024 ** 3;
 let demoVideoCacheStatus: VideoPreviewCacheStatus = { usedBytes: 0, limitBytes: DEFAULT_VIDEO_CACHE_LIMIT, itemCount: 0, pendingCleanupBytes: 0 };
 const demoMoodboards = new Map<string, MoodboardDocument & { updatedAt: string }>();
+const demoMoodboardAssetGroups = new Map<string, MoodboardAssetGroup>();
 let demoMoodboardCounter = 0;
 
 function clone<T>(value: T): T {
@@ -33,25 +34,33 @@ function updateDemoCounts(): void {
   }
 }
 
-function defaultMoodboardName(collectionId: string): string {
-  const names = new Set([...demoMoodboards.values()].filter((item) => item.collectionId === collectionId).map((item) => item.name.toLocaleLowerCase()));
+function defaultMoodboardName(): string {
+  const names = new Set([...demoMoodboards.values()].map((item) => item.name.toLocaleLowerCase()));
   let index = 1;
   while (names.has(`untitled moodboard ${index}`.toLocaleLowerCase())) index += 1;
   return `Untitled moodboard ${index}`;
 }
 
-function requireMoodboardName(collectionId: string, name: string, exceptId?: string): string {
+function requireMoodboardName(name: string): string {
   const normalized = name.trim();
   if (Array.from(normalized).length < 1 || Array.from(normalized).length > 80) throw new Error("Moodboard names must contain 1 to 80 characters");
-  if ([...demoMoodboards.values()].some((item) => item.collectionId === collectionId && item.id !== exceptId && item.name.localeCompare(normalized, undefined, { sensitivity: "accent" }) === 0)) {
-    throw new Error("A moodboard with this name already exists in this context");
-  }
   return normalized;
 }
 
 function moodboardSummary(document: MoodboardDocument & { updatedAt: string }): MoodboardSummary {
   const previewAssets = document.nodes.flatMap((node) => node.type === "asset" && node.data.assetId ? [demoAssets.find((asset) => asset.id === node.data.assetId)] : []).filter((asset): asset is Asset => Boolean(asset)).slice(0, 3);
-  return { id: document.id, collectionId: document.collectionId, name: document.name, nodeCount: document.nodes.length, previewAssets: clone(previewAssets), updatedAt: document.updatedAt };
+  const collectionIds = document.collectionIds ?? (document.collectionId ? [document.collectionId] : []);
+  const contexts = collectionIds.flatMap((id) => {
+    const collection = demoBootstrap.collections.find((item) => item.id === id);
+    return collection ? [{ id: collection.id, name: collection.name }] : [];
+  });
+  return { id: document.id, collectionId: collectionIds[0], collectionIds, contexts, name: document.name, nodeCount: document.nodes.length, previewAssets: clone(previewAssets), updatedAt: document.updatedAt };
+}
+
+function groupsForBoard(moodboardId: string): MoodboardAssetGroup[] {
+  return [...demoMoodboardAssetGroups.values()]
+    .filter((group) => group.moodboardId === moodboardId)
+    .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
 }
 
 function clearMoodboardAssets(ids: string[]): void {
@@ -65,6 +74,10 @@ function clearMoodboardAssets(ids: string[]): void {
       return { ...node, data: { ...node.data, assetId: undefined, assetSnapshot: node.data.assetSnapshot ?? (asset ? { filename: asset.filename, mediaKind: asset.mediaKind, thumbnailPath: asset.thumbnailPath } : undefined) } };
     });
     if (changed) demoMoodboards.set(id, { ...document, nodes, revision: document.revision + 1, updatedAt: new Date().toISOString() });
+  }
+  for (const [groupId, group] of demoMoodboardAssetGroups) {
+    const assets = group.assets.filter((asset) => !deleted.has(asset.id));
+    if (assets.length !== group.assets.length) demoMoodboardAssetGroups.set(groupId, { ...group, assets, updatedAt: new Date().toISOString() });
   }
 }
 
@@ -141,7 +154,10 @@ export const demoApi = {
     demoBootstrap.collections = demoBootstrap.collections.filter((collection) => collection.id !== id);
     delete demoCollectionMembers[id];
     delete demoCollectionCovers[id];
-    for (const [moodboardId, document] of demoMoodboards) if (document.collectionId === id) demoMoodboards.delete(moodboardId);
+    for (const [moodboardId, document] of demoMoodboards) {
+      const collectionIds = (document.collectionIds ?? (document.collectionId ? [document.collectionId] : [])).filter((collectionId) => collectionId !== id);
+      demoMoodboards.set(moodboardId, { ...document, collectionIds, collectionId: collectionIds[0], updatedAt: new Date().toISOString() });
+    }
   },
   setCollectionAssets: async (collectionId, assetIds, attached) => {
     const current = demoCollectionMembers[collectionId] ?? [];
@@ -165,19 +181,22 @@ export const demoApi = {
     const collection = demoBootstrap.collections.find((item) => item.id === collectionId);
     if (collection) collection.coverAssetId = undefined;
   },
-  listMoodboards: async (collectionId) => [...demoMoodboards.values()]
-    .filter((item) => item.collectionId === collectionId)
+  listMoodboards: async (filter: MoodboardListFilter = {}) => [...demoMoodboards.values()]
+    .filter((item) => !filter.collectionId || (item.collectionIds ?? []).includes(filter.collectionId))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .map(moodboardSummary),
-  createMoodboard: async (collectionId, name) => {
-    if (!demoBootstrap.collections.some((collection) => collection.id === collectionId)) throw new Error("Context not found");
+  createMoodboard: async (input: CreateMoodboardInput = {}) => {
+    const collectionIds = [...new Set(input.collectionIds ?? [])];
+    if (collectionIds.some((id) => !demoBootstrap.collections.some((collection) => collection.id === id))) throw new Error("Context not found");
     const now = new Date().toISOString();
     const id = `moodboard-${Date.now()}-${++demoMoodboardCounter}`;
     const document: MoodboardDocument & { updatedAt: string } = {
-      id, collectionId, name: requireMoodboardName(collectionId, name || defaultMoodboardName(collectionId)),
+      id, collectionId: collectionIds[0], collectionIds, name: requireMoodboardName(input.name || defaultMoodboardName()),
       viewport: { x: 0, y: 0, zoom: 1 }, backgroundColor: "#f1f2ef", nodes: [], edges: [], revision: 0, updatedAt: now,
     };
     demoMoodboards.set(id, document);
+    const groupId = `moodboard-group-${Date.now()}-${demoMoodboardCounter}`;
+    demoMoodboardAssetGroups.set(groupId, { id: groupId, moodboardId: id, name: "素材", position: 0, assets: [], createdAt: now, updatedAt: now });
     return clone(document);
   },
   getMoodboard: async (id) => {
@@ -189,23 +208,56 @@ export const demoApi = {
     const existing = demoMoodboards.get(document.id);
     if (!existing) throw new Error("Moodboard not found");
     if (existing.revision !== expectedRevision) throw new Error("Moodboard revision conflict");
-    if (document.collectionId !== existing.collectionId) throw new Error("Moodboard context cannot change");
-    requireMoodboardName(document.collectionId, document.name, document.id);
+    if (JSON.stringify(document.collectionIds ?? []) !== JSON.stringify(existing.collectionIds ?? [])) throw new Error("Moodboard contexts must be updated separately");
+    requireMoodboardName(document.name);
     if (document.nodes.length > 500 || document.edges.length > 1_000) throw new Error("Moodboard exceeds the supported element limit");
     const nodeIds = new Set(document.nodes.map((node) => node.id));
     if (nodeIds.size !== document.nodes.length || document.edges.some((edge) => !nodeIds.has(edge.sourceNodeId) || !nodeIds.has(edge.targetNodeId))) throw new Error("Moodboard contains invalid connections");
     if (document.nodes.some((node) => node.type === "asset" && node.data.assetId && !demoAssets.some((asset) => asset.id === node.data.assetId))) throw new Error("Moodboard references an unavailable asset");
     const updatedAt = new Date().toISOString();
     const revision = existing.revision + 1;
-    demoMoodboards.set(document.id, { ...clone(document), revision, updatedAt });
+    demoMoodboards.set(document.id, { ...clone(document), collectionId: document.collectionIds?.[0], revision, updatedAt });
     return { revision, updatedAt };
   },
   renameMoodboard: async (id, name) => {
     const document = demoMoodboards.get(id);
     if (!document) throw new Error("Moodboard not found");
-    demoMoodboards.set(id, { ...document, name: requireMoodboardName(document.collectionId, name, id), revision: document.revision + 1, updatedAt: new Date().toISOString() });
+    demoMoodboards.set(id, { ...document, name: requireMoodboardName(name), revision: document.revision + 1, updatedAt: new Date().toISOString() });
   },
-  deleteMoodboard: async (id) => { demoMoodboards.delete(id); },
+  deleteMoodboard: async (id) => { demoMoodboards.delete(id); for (const group of groupsForBoard(id)) demoMoodboardAssetGroups.delete(group.id); },
+  setMoodboardContexts: async (id, collectionIds: string[]) => {
+    const document = demoMoodboards.get(id);
+    if (!document) throw new Error("Moodboard not found");
+    const uniqueIds = [...new Set(collectionIds)];
+    if (uniqueIds.some((collectionId) => !demoBootstrap.collections.some((collection) => collection.id === collectionId))) throw new Error("Context not found");
+    demoMoodboards.set(id, { ...document, collectionIds: uniqueIds, collectionId: uniqueIds[0], updatedAt: new Date().toISOString() });
+  },
+  listMoodboardAssetGroups: async (moodboardId) => clone(groupsForBoard(moodboardId)),
+  createMoodboardAssetGroup: async (moodboardId, name) => {
+    if (!demoMoodboards.has(moodboardId)) throw new Error("Moodboard not found");
+    const normalized = name.trim();
+    if (!normalized || Array.from(normalized).length > 80) throw new Error("Group names must contain 1 to 80 characters");
+    if (groupsForBoard(moodboardId).some((group) => group.name.localeCompare(normalized, undefined, { sensitivity: "accent" }) === 0)) throw new Error("A group with this name already exists");
+    const now = new Date().toISOString();
+    const group: MoodboardAssetGroup = { id: `moodboard-group-${Date.now()}-${crypto.randomUUID()}`, moodboardId, name: normalized, position: groupsForBoard(moodboardId).length, assets: [], createdAt: now, updatedAt: now };
+    demoMoodboardAssetGroups.set(group.id, group);
+    return clone(group);
+  },
+  renameMoodboardAssetGroup: async (id, name) => {
+    const group = demoMoodboardAssetGroups.get(id);
+    if (!group) throw new Error("Moodboard group not found");
+    const normalized = name.trim();
+    if (!normalized || Array.from(normalized).length > 80) throw new Error("Group names must contain 1 to 80 characters");
+    demoMoodboardAssetGroups.set(id, { ...group, name: normalized, updatedAt: new Date().toISOString() });
+  },
+  deleteMoodboardAssetGroup: async (id) => { demoMoodboardAssetGroups.delete(id); },
+  setMoodboardAssetGroupAssets: async (id, assetIds: string[]) => {
+    const group = demoMoodboardAssetGroups.get(id);
+    if (!group) throw new Error("Moodboard group not found");
+    const uniqueIds = [...new Set(assetIds)];
+    if (uniqueIds.some((assetId) => !demoAssets.some((asset) => asset.id === assetId))) throw new Error("Asset not found");
+    demoMoodboardAssetGroups.set(id, { ...group, assets: uniqueIds.flatMap((assetId) => demoAssets.find((asset) => asset.id === assetId) ? [demoAssets.find((asset) => asset.id === assetId)!] : []), updatedAt: new Date().toISOString() });
+  },
   pickMoodboardExportPath: async (name) => `demo-download://${name || "moodboard"}.png`,
   writeMoodboardExport: async (path, bytes) => {
     if (!path.startsWith("demo-download://")) throw new Error("Demo exports require a download target");

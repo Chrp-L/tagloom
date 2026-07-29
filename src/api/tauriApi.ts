@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import type { AssetPage, AssetQuery, HomeSnapshot, JobProgress, LibraryBootstrap, MoodboardDocument, MoodboardSummary, SaveMoodboardResult, Setting, VideoPreviewCacheStatus, VideoPreviewProgress } from "../types";
+import type { AssetPage, AssetQuery, CreateMoodboardInput, HomeSnapshot, JobProgress, LibraryBootstrap, MoodboardAssetGroup, MoodboardDocument, MoodboardListFilter, MoodboardSummary, SaveMoodboardResult, Setting, VideoPreviewCacheStatus, VideoPreviewProgress } from "../types";
 
 function command<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   return invoke<T>(name, args);
@@ -30,12 +30,18 @@ export const tauriApi = {
   setCollectionAssets: (collectionId: string, assetIds: string[], attached: boolean): Promise<void> => command("set_collection_assets", { collectionId, assetIds, attached }),
   setCollectionCover: (collectionId: string, assetId: string): Promise<void> => command("set_collection_cover", { collectionId, assetId }),
   clearCollectionCover: (collectionId: string): Promise<void> => command("clear_collection_cover", { collectionId }),
-  listMoodboards: (collectionId: string): Promise<MoodboardSummary[]> => command("list_moodboards", { collectionId }),
-  createMoodboard: (collectionId: string, name?: string): Promise<MoodboardDocument> => command("create_moodboard", { collectionId, name }),
+  listMoodboards: (filter: MoodboardListFilter = {}): Promise<MoodboardSummary[]> => command("list_moodboards", { ...filter }),
+  createMoodboard: (input: CreateMoodboardInput = {}): Promise<MoodboardDocument> => command("create_moodboard", { ...input }),
   getMoodboard: (id: string): Promise<MoodboardDocument> => command("get_moodboard", { id }),
   saveMoodboard: (document: MoodboardDocument, expectedRevision: number): Promise<SaveMoodboardResult> => command("save_moodboard", { document, expectedRevision }),
   renameMoodboard: (id: string, name: string): Promise<void> => command("rename_moodboard", { id, name }),
   deleteMoodboard: (id: string): Promise<void> => command("delete_moodboard", { id }),
+  setMoodboardContexts: (id: string, collectionIds: string[]): Promise<void> => command("set_moodboard_contexts", { moodboardId: id, collectionIds }),
+  listMoodboardAssetGroups: (moodboardId: string): Promise<MoodboardAssetGroup[]> => command("list_moodboard_asset_groups", { moodboardId }),
+  createMoodboardAssetGroup: (moodboardId: string, name: string): Promise<MoodboardAssetGroup> => command("create_moodboard_asset_group", { moodboardId, name }),
+  renameMoodboardAssetGroup: (id: string, name: string): Promise<void> => command("rename_moodboard_asset_group", { id, name }),
+  deleteMoodboardAssetGroup: (id: string): Promise<void> => command("delete_moodboard_asset_group", { id }),
+  setMoodboardAssetGroupAssets: (id: string, assetIds: string[]): Promise<void> => command("set_moodboard_asset_group_items", { groupId: id, assetIds }),
   pickMoodboardExportPath: async (name: string): Promise<string | null> => save({
     title: "Export moodboard",
     defaultPath: `${name.replace(/[\\/:*?\"<>|]/g, "-") || "moodboard"}.png`,

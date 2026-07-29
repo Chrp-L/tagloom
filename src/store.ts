@@ -15,6 +15,7 @@ import type { SelectionMode } from "./features/selection/selectionModel";
 
 export type NavigationFilter =
   | { kind: "home" }
+  | { kind: "moodboards" }
   | { kind: "all" }
   | { kind: "media"; mediaKind: MediaKind }
   | { kind: "source"; id: string }
