@@ -112,3 +112,89 @@ export interface Setting {
   key: string;
   value: string;
 }
+
+export interface MoodboardViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface MoodboardAssetSnapshot {
+  filename: string;
+  mediaKind: MediaKind;
+  thumbnailPath?: string;
+}
+
+export interface MoodboardAssetNode {
+  id: string;
+  type: "asset";
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  zIndex: number;
+  data: {
+    assetId?: string;
+    assetSnapshot?: MoodboardAssetSnapshot;
+    fit: "cover" | "contain";
+  };
+}
+
+export interface MoodboardTextNode {
+  id: string;
+  type: "text";
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  zIndex: number;
+  data: {
+    text: string;
+    fontSize: "small" | "medium" | "large";
+    color: string;
+    align: "left" | "center" | "right";
+  };
+}
+
+export interface MoodboardSwatchNode {
+  id: string;
+  type: "swatch";
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  zIndex: number;
+  data: {
+    color: string;
+    name?: string;
+  };
+}
+
+export type MoodboardNode = MoodboardAssetNode | MoodboardTextNode | MoodboardSwatchNode;
+
+export interface MoodboardEdge {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  color: "neutral" | "coral" | "green" | "gold";
+  config?: Record<string, never>;
+}
+
+export interface MoodboardSummary {
+  id: string;
+  collectionId: string;
+  name: string;
+  nodeCount: number;
+  previewAssets: Asset[];
+  updatedAt: string;
+}
+
+export interface MoodboardDocument {
+  id: string;
+  collectionId: string;
+  name: string;
+  viewport: MoodboardViewport;
+  backgroundColor: string;
+  nodes: MoodboardNode[];
+  edges: MoodboardEdge[];
+  revision: number;
+}
+
+export interface SaveMoodboardResult {
+  revision: number;
+  updatedAt: string;
+}

@@ -27,6 +27,8 @@
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2.5.3",
+    "@xyflow/react": "^12.11.2",
+    "html-to-image": "^1.11.11",
     "i18next": "^25.8.13",
     "lucide-react": "^0.563.0",
     "motion": "^12.27.1",

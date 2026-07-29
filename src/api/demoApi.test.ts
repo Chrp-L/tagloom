@@ -60,4 +60,29 @@ describe("API adapters", () => {
       await demoApi.setAssetTags([], (await demoApi.getBootstrap()).tags[0].id, false);
     }
   });
+
+  it("persists moodboard documents and rejects an outdated revision", async () => {
+    const collectionId = (await demoApi.getBootstrap()).collections[0].id;
+    const asset = demoAssets[0];
+    const board = await demoApi.createMoodboard(collectionId, `Moodboard test ${Date.now()}`);
+    try {
+      const document = {
+        ...board,
+        nodes: [{
+          id: "asset-node",
+          type: "asset" as const,
+          position: { x: 0, y: 0 },
+          size: { width: 240, height: 180 },
+          zIndex: 1,
+          data: { assetId: asset.id, fit: "cover" as const },
+        }],
+      };
+      const saved = await demoApi.saveMoodboard(document, board.revision);
+      expect(saved.revision).toBe(board.revision + 1);
+      expect((await demoApi.listMoodboards(collectionId)).find((item) => item.id === board.id)).toMatchObject({ nodeCount: 1, previewAssets: [{ id: asset.id }] });
+      await expect(demoApi.saveMoodboard(document, board.revision)).rejects.toThrow("revision conflict");
+    } finally {
+      await demoApi.deleteMoodboard(board.id);
+    }
+  });
 });

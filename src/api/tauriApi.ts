@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
-import type { AssetPage, AssetQuery, HomeSnapshot, JobProgress, LibraryBootstrap, Setting, VideoPreviewCacheStatus, VideoPreviewProgress } from "../types";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import type { AssetPage, AssetQuery, HomeSnapshot, JobProgress, LibraryBootstrap, MoodboardDocument, MoodboardSummary, SaveMoodboardResult, Setting, VideoPreviewCacheStatus, VideoPreviewProgress } from "../types";
 
 function command<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   return invoke<T>(name, args);
@@ -30,6 +30,18 @@ export const tauriApi = {
   setCollectionAssets: (collectionId: string, assetIds: string[], attached: boolean): Promise<void> => command("set_collection_assets", { collectionId, assetIds, attached }),
   setCollectionCover: (collectionId: string, assetId: string): Promise<void> => command("set_collection_cover", { collectionId, assetId }),
   clearCollectionCover: (collectionId: string): Promise<void> => command("clear_collection_cover", { collectionId }),
+  listMoodboards: (collectionId: string): Promise<MoodboardSummary[]> => command("list_moodboards", { collectionId }),
+  createMoodboard: (collectionId: string, name?: string): Promise<MoodboardDocument> => command("create_moodboard", { collectionId, name }),
+  getMoodboard: (id: string): Promise<MoodboardDocument> => command("get_moodboard", { id }),
+  saveMoodboard: (document: MoodboardDocument, expectedRevision: number): Promise<SaveMoodboardResult> => command("save_moodboard", { document, expectedRevision }),
+  renameMoodboard: (id: string, name: string): Promise<void> => command("rename_moodboard", { id, name }),
+  deleteMoodboard: (id: string): Promise<void> => command("delete_moodboard", { id }),
+  pickMoodboardExportPath: async (name: string): Promise<string | null> => save({
+    title: "Export moodboard",
+    defaultPath: `${name.replace(/[\\/:*?\"<>|]/g, "-") || "moodboard"}.png`,
+    filters: [{ name: "PNG image", extensions: ["png"] }],
+  }),
+  writeMoodboardExport: (path: string, bytes: Uint8Array): Promise<void> => command("write_moodboard_export", { path, bytes: Array.from(bytes) }),
   recordAssetViewed: (id: string): Promise<void> => command("record_asset_viewed", { id }),
   updateAssetNote: (id: string, note: string): Promise<void> => command("update_asset_note", { id, note }),
   prepareVideoPreview: (id: string): Promise<string | undefined> => command("prepare_video_preview", { id }),
